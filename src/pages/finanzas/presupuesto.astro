@@ -1,0 +1,153 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Input from '../../components/Input.astro';
+import Button from '../../components/Button.astro';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Current week
+const today = new Date();
+const dayOfWeek = today.getDay();
+const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+const weekStart = new Date(today);
+weekStart.setDate(today.getDate() + mondayOffset);
+const weekStartStr = weekStart.toISOString().split('T')[0];
+const weekEnd = new Date(weekStart);
+weekEnd.setDate(weekStart.getDate() + 6);
+const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
+
+// Get existing budget
+const { data: currentBudget } = await supabase
+  .from('budget_weeks')
+  .select('*')
+  .eq('week_start', weekStartStr)
+  .single();
+
+const existingAmount = currentBudget ? Number(currentBudget.budget_amount) : '';
+
+// Handle POST
+let errorMsg = '';
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const budgetAmount = formData.get('budget_amount')?.toString();
+
+  if (!budgetAmount || parseFloat(budgetAmount) <= 0) {
+    errorMsg = 'El monto debe ser mayor a 0';
+  } else {
+    const { error } = await supabase
+      .from('budget_weeks')
+      .upsert(
+        {
+          week_start: weekStartStr,
+          budget_amount: parseFloat(budgetAmount),
+          created_by: user.id,
+        },
+        { onConflict: 'week_start' }
+      );
+
+    if (error) {
+      errorMsg = error.message;
+    } else {
+      return Astro.redirect('/finanzas');
+    }
+  }
+}
+---
+
+<Layout title="TCT — Presupuesto Semanal" currentPath="/finanzas">
+  <div class="presupuesto-page">
+    <section class="header-section">
+      <a href="/finanzas" class="back-link">← FINANZAS</a>
+    </section>
+
+    <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO</h2>
+    <span class="label">{weekLabel}</span>
+
+    {errorMsg && (
+      <div class="error-box">[ERROR: {errorMsg}]</div>
+    )}
+
+    <form method="POST" class="budget-form">
+      <Input 
+        label="Presupuesto semanal (CLP)" 
+        name="budget_amount" 
+        type="number" 
+        value={existingAmount.toString()} 
+        placeholder="80000" 
+        required={true} 
+      />
+
+      <p class="hint-text">
+        Este monto será el presupuesto de comida para la semana {weekLabel.toLowerCase()}.
+      </p>
+
+      <div class="form-actions">
+        <Button type="submit" variant="primary" fullWidth={true}>
+          {currentBudget ? 'ACTUALIZAR PRESUPUESTO' : 'ESTABLECER PRESUPUESTO'}
+        </Button>
+      </div>
+    </form>
+  </div>
+</Layout>
+
+<style>
+  .presupuesto-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+    max-width: 480px;
+  }
+
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .back-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .back-link:hover { color: var(--text-display); }
+
+  .page-title {
+    font-family: var(--font-mono);
+    font-size: var(--heading);
+    letter-spacing: -0.01em;
+    color: var(--text-display);
+    font-weight: 400;
+  }
+
+  .error-box {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-technical);
+  }
+
+  .budget-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+
+  .hint-text {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-secondary);
+  }
+
+  .form-actions {
+    padding-top: var(--space-md);
+  }
+</style>

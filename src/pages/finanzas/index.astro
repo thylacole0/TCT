@@ -1,0 +1,100 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import FinanzasHub from '../../components/islands/FinanzasHub';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Current week calculation
+const today = new Date();
+const dayOfWeek = today.getDay();
+const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+const weekStart = new Date(today);
+weekStart.setDate(today.getDate() + mondayOffset);
+const weekEnd = new Date(weekStart);
+weekEnd.setDate(weekStart.getDate() + 6);
+const weekStartStr = weekStart.toISOString().split('T')[0];
+const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
+const todayStr = today.toISOString().split('T')[0];
+
+// Parallel: budget, profiles, today's meals, meal_types
+const [budgetRes, profilesRes, todaysMealsRes, mealTypesRes] = await Promise.all([
+  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).single(),
+  supabase.from('profiles').select('*'),
+  supabase.from('meal_plans').select('*, meal_types(name)').eq('meal_date', todayStr),
+  supabase.from('meal_types').select('*').order('sort_order'),
+]);
+
+const currentBudget = budgetRes.data;
+const profiles = profilesRes.data;
+const todaysMeals = todaysMealsRes.data;
+const mealTypes = mealTypesRes.data || [];
+
+// Expenses depend on budget
+const { data: expenses } = await supabase
+  .from('expenses')
+  .select('*, profiles(display_name)')
+  .eq('budget_week_id', currentBudget?.id || '00000000-0000-0000-0000-000000000000')
+  .order('expense_date', { ascending: false });
+
+const totalSpent = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+const budgetAmount = currentBudget ? Number(currentBudget.budget_amount) : 0;
+
+// Category breakdown
+const categoryTotals: Record<string, number> = {};
+expenses?.forEach(e => {
+  const cat = e.category || 'Otros';
+  categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(e.amount);
+});
+const sortedCategories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+
+// Daily spending
+const dailySpending: Record<string, number> = {};
+const dayNames = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
+for (let i = 0; i < 7; i++) {
+  dailySpending[dayNames[i]] = 0;
+}
+expenses?.forEach(e => {
+  const d = new Date(e.expense_date);
+  const dow = d.getDay();
+  const dayIdx = dow === 0 ? 6 : dow - 1;
+  dailySpending[dayNames[dayIdx]] = (dailySpending[dayNames[dayIdx]] || 0) + Number(e.amount);
+});
+
+// Today's meals map
+const mealsMap: Record<string, string> = {};
+todaysMeals?.forEach(m => {
+  mealsMap[m.meal_types?.name] = m.description;
+});
+
+// Serialize expenses for the island
+const serializedExpenses = (expenses || []).map((e: any) => ({
+  id: e.id,
+  description: e.description,
+  amount: Number(e.amount),
+  category: e.category,
+  expense_date: e.expense_date,
+  user_name: e.profiles?.display_name || '',
+}));
+
+const expenseCategories = ['Supermercado', 'Feria', 'Delivery', 'Otro'];
+---
+
+<Layout title="TCT — Finanzas" currentPath="/finanzas">
+  <FinanzasHub
+    client:load
+    budgetWeekId={currentBudget?.id}
+    budgetAmount={budgetAmount}
+    totalSpent={totalSpent}
+    weekLabel={weekLabel}
+    mealTypes={mealTypes}
+    todaysMeals={mealsMap}
+    expenses={serializedExpenses}
+    categories={expenseCategories}
+    dailySpending={dailySpending}
+    categoryTotals={sortedCategories}
+  />
+</Layout>

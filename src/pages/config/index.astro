@@ -1,0 +1,422 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Card from '../../components/Card.astro';
+import Button from '../../components/Button.astro';
+import Input from '../../components/Input.astro';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Parallel fetch
+const [categoriesRes, rewardsRes, profilesRes] = await Promise.all([
+  supabase.from('chore_categories').select('*, chores(*)'),
+  supabase.from('rewards').select('*').order('points_cost'),
+  supabase.from('profiles').select('*'),
+]);
+
+const categories = categoriesRes.data;
+const rewards = rewardsRes.data;
+const profiles = profilesRes.data;
+// Handle form submissions
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const action = formData.get('action')?.toString();
+
+  if (action === 'add_chore') {
+    const name = formData.get('name')?.toString();
+    const points = formData.get('points')?.toString();
+    const categoryId = formData.get('category_id')?.toString();
+    if (name && points && categoryId) {
+      await supabase.from('chores').insert({
+        name,
+        points: parseInt(points),
+        category_id: categoryId,
+      });
+    }
+  } else if (action === 'delete_chore') {
+    const choreId = formData.get('chore_id')?.toString();
+    if (choreId) {
+      await supabase.from('chores').update({ is_active: false }).eq('id', choreId);
+    }
+  } else if (action === 'add_reward') {
+    const name = formData.get('name')?.toString();
+    const pointsCost = formData.get('points_cost')?.toString();
+    const description = formData.get('description')?.toString();
+    if (name && pointsCost) {
+      await supabase.from('rewards').insert({
+        name,
+        points_cost: parseInt(pointsCost),
+        description: description || null,
+      });
+    }
+  } else if (action === 'delete_reward') {
+    const rewardId = formData.get('reward_id')?.toString();
+    if (rewardId) {
+      await supabase.from('rewards').update({ is_active: false }).eq('id', rewardId);
+    }
+  } else if (action === 'update_profile') {
+    const displayName = formData.get('display_name')?.toString();
+    if (displayName) {
+      await supabase.from('profiles').update({ display_name: displayName }).eq('id', user.id);
+    }
+  }
+
+  return Astro.redirect('/config');
+}
+
+const myProfile = profiles?.find(p => p.id === user.id);
+---
+
+<Layout title="TCT — Configuración" currentPath="/config">
+  <div class="config-page">
+    <h2 class="page-title">CONFIGURACIÓN</h2>
+
+    <!-- PROFILE -->
+    <section class="config-section">
+      <span class="label">PERFIL</span>
+      <Card padding="md">
+        <form method="POST" class="profile-form">
+          <input type="hidden" name="action" value="update_profile" />
+          <div class="profile-row">
+            <Input label="Nombre para mostrar" name="display_name" value={myProfile?.display_name || ''} />
+            <Button type="submit" variant="secondary">GUARDAR</Button>
+          </div>
+        </form>
+        <div class="profile-info">
+          <span class="caption">{user.email}</span>
+        </div>
+      </Card>
+    </section>
+
+    <!-- CHORES MANAGEMENT -->
+    <section class="config-section">
+      <span class="label">TAREAS DE LIMPIEZA</span>
+      
+      {categories?.map((cat: any) => (
+        <div class="category-block">
+          <span class="category-title">{cat.name}</span>
+          <div class="items-list">
+            {cat.chores?.filter((c: any) => c.is_active).map((chore: any) => (
+              <div class="item-row">
+                <div class="item-info">
+                  <span class="item-name">{chore.name}</span>
+                  <span class="item-points">{chore.points} PTS</span>
+                </div>
+                <form method="POST" class="delete-form">
+                  <input type="hidden" name="action" value="delete_chore" />
+                  <input type="hidden" name="chore_id" value={chore.id} />
+                  <button type="submit" class="delete-btn">×</button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <!-- Add chore form -->
+      <Card padding="md">
+        <form method="POST" class="add-form">
+          <input type="hidden" name="action" value="add_chore" />
+          <span class="form-title">AGREGAR TAREA</span>
+          <div class="add-fields">
+            <Input label="Nombre" name="name" placeholder="Ej: Trapear" required={true} />
+            <Input label="Puntos" name="points" type="number" placeholder="3" required={true} />
+            <div class="input-group">
+              <label for="category_id" class="input-label">CATEGORÍA</label>
+              <select name="category_id" class="select-field" required>
+                {categories?.map((cat: any) => (
+                  <option value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <Button type="submit" variant="secondary">AGREGAR</Button>
+        </form>
+      </Card>
+    </section>
+
+    <!-- REWARDS MANAGEMENT -->
+    <section class="config-section">
+      <span class="label">PREMIOS</span>
+      
+      <div class="items-list">
+        {rewards?.filter((r: any) => r.is_active).map((reward: any) => (
+          <div class="item-row">
+            <div class="item-info">
+              <span class="item-name">{reward.name}</span>
+              <span class="item-points">{reward.points_cost} PTS</span>
+            </div>
+            <form method="POST" class="delete-form">
+              <input type="hidden" name="action" value="delete_reward" />
+              <input type="hidden" name="reward_id" value={reward.id} />
+              <button type="submit" class="delete-btn">×</button>
+            </form>
+          </div>
+        ))}
+      </div>
+
+      <Card padding="md">
+        <form method="POST" class="add-form">
+          <input type="hidden" name="action" value="add_reward" />
+          <span class="form-title">AGREGAR PREMIO</span>
+          <div class="add-fields">
+            <Input label="Nombre" name="name" placeholder="Ej: Cena especial" required={true} />
+            <Input label="Costo en puntos" name="points_cost" type="number" placeholder="25" required={true} />
+            <Input label="Descripción (opcional)" name="description" placeholder="Detalles del premio" />
+          </div>
+          <Button type="submit" variant="secondary">AGREGAR</Button>
+        </form>
+      </Card>
+    </section>
+
+    <!-- THEME -->
+    <section class="config-section">
+      <span class="label">APARIENCIA</span>
+      <Card padding="md">
+        <div class="theme-row">
+          <span class="theme-label">Modo oscuro</span>
+          <button id="config-theme-toggle" class="theme-toggle-btn">
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+          </button>
+        </div>
+      </Card>
+    </section>
+  </div>
+</Layout>
+
+<script>
+  const toggle = document.getElementById('config-theme-toggle');
+  const html = document.documentElement;
+  
+  function updateToggle() {
+    const isDark = html.getAttribute('data-theme') !== 'light';
+    const thumb = toggle?.querySelector('.toggle-thumb') as HTMLElement;
+    const track = toggle?.querySelector('.toggle-track') as HTMLElement;
+    if (thumb && track) {
+      thumb.style.transform = isDark ? 'translateX(20px)' : 'translateX(0)';
+      track.style.background = isDark ? 'var(--text-display)' : 'var(--border-visible)';
+      thumb.style.background = isDark ? 'var(--black)' : 'var(--text-disabled)';
+    }
+  }
+  
+  updateToggle();
+  
+  toggle?.addEventListener('click', () => {
+    const current = html.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('tct-theme', next);
+    updateToggle();
+  });
+</script>
+
+<style>
+  .config-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xl);
+    max-width: 600px;
+  }
+
+  .page-title {
+    font-family: var(--font-mono);
+    font-size: var(--heading);
+    letter-spacing: -0.01em;
+    color: var(--text-display);
+    font-weight: 400;
+  }
+
+  .config-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  /* Profile */
+  .profile-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .profile-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-md);
+  }
+
+  .profile-row > :first-child {
+    flex: 1;
+  }
+
+  .profile-info {
+    padding-top: var(--space-sm);
+  }
+
+  /* Items list */
+  .category-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .category-title {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-disabled);
+    padding-top: var(--space-sm);
+  }
+
+  .items-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .item-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .item-name {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+  }
+
+  .item-points {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+  }
+
+  .delete-form {
+    display: contents;
+  }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-disabled);
+    font-size: 18px;
+    cursor: pointer;
+    padding: var(--space-xs);
+    transition: color var(--duration-micro) var(--ease-out);
+    line-height: 1;
+  }
+
+  .delete-btn:hover {
+    color: var(--accent);
+  }
+
+  /* Add form */
+  .add-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .form-title {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+  }
+
+  .add-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .input-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .select-field {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border-visible);
+    padding: var(--space-sm) 0;
+    outline: none;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .select-field option {
+    background: var(--surface);
+    color: var(--text-primary);
+  }
+
+  /* Theme toggle */
+  .theme-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .theme-label {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+  }
+
+  .theme-toggle-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-xs);
+  }
+
+  .toggle-track {
+    display: block;
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: var(--text-display);
+    position: relative;
+    transition: background var(--duration-micro) var(--ease-out);
+  }
+
+  .toggle-thumb {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--black);
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform var(--duration-normal) var(--ease-out),
+                background var(--duration-normal) var(--ease-out);
+  }
+</style>

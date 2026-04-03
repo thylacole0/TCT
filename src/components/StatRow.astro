@@ -1,0 +1,72 @@
+---
+interface Props {
+  label: string;
+  value: string | number;
+  unit?: string;
+  color?: string;
+  trend?: 'up' | 'down' | 'neutral';
+}
+
+const { label, value, unit, color = 'var(--text-primary)', trend } = Astro.props;
+
+const trendSymbol = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '';
+---
+
+<div class="stat-row">
+  <span class="stat-label">{label}</span>
+  <div class="stat-value-wrap">
+    <span class="stat-value" style={`color: ${color};`}>
+      {value}
+    </span>
+    {unit && <span class="stat-unit">{unit}</span>}
+    {trend && trend !== 'neutral' && (
+      <span class="stat-trend" style={`color: ${color};`}>{trendSymbol}</span>
+    )}
+  </div>
+</div>
+
+<style>
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-row:last-child {
+    border-bottom: none;
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .stat-value-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-xs);
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--body);
+    font-weight: 700;
+  }
+
+  .stat-unit {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .stat-trend {
+    font-size: var(--body-sm);
+  }
+</style>

@@ -1,0 +1,272 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import HeroNumber from '../../components/HeroNumber.astro';
+import Card from '../../components/Card.astro';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Current month
+const now = new Date();
+const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
+
+// Parallel fetch
+const [profilesRes, choreLogsRes, rewardsRes, claimsRes] = await Promise.all([
+  supabase.from('profiles').select('*'),
+  supabase.from('chore_logs')
+    .select('user_id, points_earned')
+    .gte('completed_at', monthStart)
+    .lte('completed_at', monthEnd),
+  supabase.from('rewards').select('*').eq('is_active', true).order('points_cost', { ascending: true }),
+  supabase.from('reward_claims')
+    .select('*, rewards(name), profiles(display_name)')
+    .order('claimed_at', { ascending: false })
+    .limit(10),
+]);
+
+const profiles = profilesRes.data;
+const choreLogs = choreLogsRes.data;
+const rewards = rewardsRes.data;
+const claims = claimsRes.data;
+
+const scores: Record<string, number> = {};
+profiles?.forEach(p => { scores[p.id] = 0; });
+choreLogs?.forEach(log => {
+  scores[log.user_id] = (scores[log.user_id] || 0) + log.points_earned;
+});
+
+const myScore = scores[user.id] || 0;
+
+// Handle claim POST
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const rewardId = formData.get('reward_id')?.toString();
+  
+  if (rewardId) {
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    await supabase.from('reward_claims').insert({
+      reward_id: rewardId,
+      user_id: user.id,
+      month,
+    });
+    return Astro.redirect('/limpieza/premios');
+  }
+}
+
+// Determine winner (for claim eligibility)
+const sortedScores = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+const isWinner = sortedScores.length > 0 && sortedScores[0][0] === user.id && sortedScores[0][1] > 0;
+const isTied = sortedScores.length > 1 && sortedScores[0][1] === sortedScores[1][1];
+---
+
+<Layout title="TCT — Premios" currentPath="/limpieza">
+  <div class="premios">
+    <section class="header-section">
+      <a href="/limpieza" class="back-link">← LIMPIEZA</a>
+      <span class="label">{monthLabel}</span>
+    </section>
+
+    <!-- My Score -->
+    <section class="score-section">
+      <HeroNumber value={myScore} unit="PTS" label="TU PUNTAJE" size="lg" />
+      {isWinner && !isTied && (
+        <span class="winner-badge">[ LÍDER DEL MES ]</span>
+      )}
+      {isTied && (
+        <span class="tied-badge">[ EMPATE ]</span>
+      )}
+    </section>
+
+    <!-- Available Rewards -->
+    <section class="rewards-section">
+      <div class="section-header">
+        <span class="label">PREMIOS DISPONIBLES</span>
+      </div>
+      <div class="rewards-list">
+        {rewards?.map((reward: any) => {
+          const canClaim = myScore >= reward.points_cost && (isWinner || isTied);
+          return (
+            <Card padding="md">
+              <div class="reward-card">
+                <div class="reward-info">
+                  <span class="reward-name">{reward.name}</span>
+                  {reward.description && <span class="caption">{reward.description}</span>}
+                </div>
+                <div class="reward-action">
+                  <span class="reward-cost">{reward.points_cost} PTS</span>
+                  {canClaim ? (
+                    <form method="POST">
+                      <input type="hidden" name="reward_id" value={reward.id} />
+                      <button type="submit" class="claim-btn">CANJEAR</button>
+                    </form>
+                  ) : (
+                    <span class="claim-locked">[BLOQUEADO]</span>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </section>
+
+    <!-- Claims History -->
+    {claims && claims.length > 0 && (
+      <section class="claims-section">
+        <div class="section-header">
+          <span class="label">HISTORIAL DE CANJES</span>
+        </div>
+        <div class="claims-list">
+          {claims.map((claim: any) => {
+            const date = new Date(claim.claimed_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+            return (
+              <div class="claim-row">
+                <div class="claim-info">
+                  <span class="claim-name">{claim.rewards?.name}</span>
+                  <span class="caption">{claim.profiles?.display_name} · {date}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .premios {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xl);
+  }
+
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .back-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .back-link:hover { color: var(--text-display); }
+
+  .score-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .winner-badge {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    color: var(--success);
+  }
+
+  .tied-badge {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    color: var(--warning);
+  }
+
+  .section-header {
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-md);
+  }
+
+  .rewards-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .reward-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .reward-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .reward-name {
+    font-family: var(--font-body);
+    font-size: var(--body);
+    color: var(--text-primary);
+  }
+
+  .reward-action {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-xs);
+  }
+
+  .reward-cost {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
+    color: var(--text-display);
+  }
+
+  .claim-btn {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--black);
+    background: var(--text-display);
+    border: none;
+    border-radius: var(--radius-pill);
+    padding: 6px 16px;
+    cursor: pointer;
+    transition: opacity var(--duration-micro) var(--ease-out);
+  }
+  .claim-btn:hover { opacity: 0.9; }
+
+  .claim-locked {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-disabled);
+  }
+
+  .claims-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .claim-row {
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .claim-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .claim-name {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+  }
+</style>

@@ -1,0 +1,324 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import HeroNumber from '../../components/HeroNumber.astro';
+import SegmentedBar from '../../components/SegmentedBar.astro';
+import Card from '../../components/Card.astro';
+import Button from '../../components/Button.astro';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Current month
+const now = new Date();
+const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
+
+// Parallel fetch
+const [profilesRes, choreLogsRes, categoriesRes] = await Promise.all([
+  supabase.from('profiles').select('*'),
+  supabase.from('chore_logs')
+    .select('*, chores(name, category_id, chore_categories(name)), profiles(display_name)')
+    .gte('completed_at', monthStart)
+    .lte('completed_at', monthEnd)
+    .order('completed_at', { ascending: false }),
+  supabase.from('chore_categories').select('*, chores(*)'),
+]);
+
+const profiles = profilesRes.data;
+const choreLogs = choreLogsRes.data;
+const categories = categoriesRes.data;
+
+// Scores
+const scores: Record<string, number> = {};
+profiles?.forEach(p => { scores[p.id] = 0; });
+choreLogs?.forEach(log => {
+  scores[log.user_id] = (scores[log.user_id] || 0) + log.points_earned;
+});
+
+// Handle POST (log a chore)
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const choreId = formData.get('chore_id')?.toString();
+  
+  if (choreId) {
+    const { data: chore } = await supabase.from('chores').select('points').eq('id', choreId).single();
+    if (chore) {
+      await supabase.from('chore_logs').insert({
+        chore_id: choreId,
+        user_id: user.id,
+        points_earned: chore.points,
+      });
+      return Astro.redirect('/limpieza');
+    }
+  }
+}
+
+const totalMax = Math.max(...Object.values(scores), 1);
+---
+
+<Layout title="TCT — Limpieza" currentPath="/limpieza">
+  <div class="limpieza">
+    <!-- HERO: Scores -->
+    <section class="scores-section">
+      <span class="label">{monthLabel}</span>
+      <div class="scores-grid">
+        {profiles?.map((p) => {
+          const isMe = p.id === user.id;
+          const score = scores[p.id] || 0;
+          return (
+            <div class="score-card">
+              <HeroNumber 
+                value={score} 
+                unit="PTS"
+                label={p.display_name}
+                size={isMe ? 'lg' : 'md'}
+                color={isMe ? 'var(--text-display)' : 'var(--text-secondary)'}
+              />
+              <SegmentedBar 
+                value={score} 
+                max={totalMax} 
+                segments={10}
+                showValue={false}
+                size="compact"
+                color={isMe ? 'var(--text-display)' : 'var(--text-disabled)'}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </section>
+
+    <!-- REGISTER TASK -->
+    <section class="register-section">
+      <div class="section-header">
+        <span class="label">REGISTRAR TAREA</span>
+      </div>
+      {categories?.map((cat: any) => (
+        <div class="category-group">
+          <span class="category-name">{cat.name}</span>
+          <div class="chores-list">
+            {cat.chores?.filter((c: any) => c.is_active).map((chore: any) => (
+              <form method="POST" class="chore-form">
+                <input type="hidden" name="chore_id" value={chore.id} />
+                <button type="submit" class="chore-btn">
+                  <span class="chore-name">{chore.name}</span>
+                  <span class="chore-points">+{chore.points}</span>
+                </button>
+              </form>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+
+    <!-- HISTORY -->
+    <section class="history-section">
+      <div class="section-header">
+        <span class="label">HISTORIAL DEL MES</span>
+        <span class="caption">{choreLogs?.length || 0} TAREAS</span>
+      </div>
+      <div class="history-list">
+        {choreLogs?.map((log: any) => {
+          const time = new Date(log.completed_at);
+          const timeStr = time.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+          return (
+            <div class="history-row">
+              <div class="history-info">
+                <span class="history-name">{log.chores?.name}</span>
+                <span class="caption">{log.profiles?.display_name} · {timeStr}</span>
+              </div>
+              <span class="history-points">+{log.points_earned}</span>
+            </div>
+          );
+        })}
+        {!choreLogs?.length && (
+          <p class="empty-state">[SIN TAREAS REGISTRADAS ESTE MES]</p>
+        )}
+      </div>
+    </section>
+
+    <!-- PREMIOS LINK -->
+    <section class="premios-link">
+      <a href="/limpieza/premios" class="premios-btn">
+        <span class="qa-label">VER PREMIOS DISPONIBLES</span>
+        <span class="qa-arrow">→</span>
+      </a>
+    </section>
+  </div>
+</Layout>
+
+<style>
+  .limpieza {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xl);
+  }
+
+  .scores-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+
+  .scores-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xl);
+  }
+
+  .score-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  /* Register Task */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-md);
+  }
+
+  .register-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .category-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .category-name {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-disabled);
+    padding: var(--space-xs) 0;
+  }
+
+  .chores-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chore-form {
+    display: contents;
+  }
+
+  .chore-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: all var(--duration-micro) var(--ease-out);
+    text-align: left;
+  }
+
+  .chore-btn:hover {
+    background: var(--surface);
+    border-bottom-color: var(--border-visible);
+  }
+
+  .chore-name {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+  }
+
+  .chore-points {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
+    color: var(--success);
+  }
+
+  /* History */
+  .history-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .history-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .history-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .history-name {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+  }
+
+  .history-points {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
+    color: var(--success);
+  }
+
+  .empty-state {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    color: var(--text-disabled);
+    text-align: center;
+    padding: var(--space-2xl) 0;
+  }
+
+  /* Premios Link */
+  .premios-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md) var(--space-lg);
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-compact);
+    text-decoration: none;
+    transition: all var(--duration-micro) var(--ease-out);
+  }
+
+  .premios-btn:hover {
+    border-color: var(--text-primary);
+  }
+
+  .qa-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-primary);
+  }
+
+  .qa-arrow {
+    color: var(--text-disabled);
+  }
+
+  @media (max-width: 768px) {
+    .scores-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

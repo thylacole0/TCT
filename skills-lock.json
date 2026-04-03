@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "skills": {
+    "accessibility": {
+      "source": "addyosmani/web-quality-skills",
+      "sourceType": "github",
+      "computedHash": "494d59fffe67c87b485f4ee2fb1abd73fc9d0d508c4c8bd9c43a9edd3242f730"
+    },
+    "astro": {
+      "source": "astrolicious/agent-skills",
+      "sourceType": "github",
+      "computedHash": "3a70f9666e7b6a03efb939b7e62938f4d3a6a5d956b2cc3c10011fda6ba27e9b"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "516bd2154eb843a8240e43d5b285229129853114ad7075a5e141e1c08e408c84"
+    },
+    "nodejs-backend-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "3d6cbc12f720d8f02e1936c3e7fab78245eaa69500edbceea93d493d4ece6094"
+    },
+    "nodejs-best-practices": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "9f8d3f268624c4757f4039617942d3e8ddcf420b9295cb943bea3bf9feb37e9d"
+    },
+    "seo": {
+      "source": "addyosmani/web-quality-skills",
+      "sourceType": "github",
+      "computedHash": "680cc12a17e9308b4592a2751db51615c618993f75362cb8e64207f6355a8c63"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "e3ba3d760c5f4cc43b02a91fb8924f726c7818f95cc35d79d0a606ca622b72f5"
+    },
+    "typescript-advanced-types": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "ee8377c523a911be41c31037b477805773ca5ab5ade181e44ca7dd3cd8df6692"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "6337038fe1fe6bbe1b9f252ab678ee575859190bab6f0f246f4061824eb40875"
+    },
+    "vercel-react-view-transitions": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "db55fee57546ae8b7cee3d9cc08e8e810bf78cce43e2d3dd26eea69e1bf357ae"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "d8e7d3afe37dcc8a97b99ffb5afdb4d0919ae0092ea8b68f44eb201f035e33ac"
+    }
+  }
+}

@@ -1,0 +1,88 @@
+---
+interface Props {
+  variant?: 'primary' | 'secondary' | 'ghost' | 'destructive';
+  type?: 'button' | 'submit' | 'reset';
+  href?: string;
+  fullWidth?: boolean;
+  disabled?: boolean;
+}
+
+const { variant = 'primary', type = 'button', href, fullWidth = false, disabled = false } = Astro.props;
+const Tag = href ? 'a' : 'button';
+---
+
+<Tag
+  class:list={['btn', `btn-${variant}`, { 'btn-full': fullWidth }]}
+  {...(href ? { href } : { type, disabled })}
+>
+  <slot />
+</Tag>
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 12px 24px;
+    min-height: 44px;
+    border: none;
+    cursor: pointer;
+    transition: all var(--duration-micro) var(--ease-out);
+    white-space: nowrap;
+    gap: var(--space-sm);
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-full {
+    width: 100%;
+  }
+
+  .btn-primary {
+    background: var(--text-display);
+    color: var(--black);
+    border-radius: var(--radius-pill);
+  }
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-pill);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--text-primary);
+    color: var(--text-display);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 0;
+    padding: 12px 8px;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--text-display);
+  }
+
+  .btn-destructive {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-pill);
+  }
+  .btn-destructive:hover:not(:disabled) {
+    background: var(--accent-subtle);
+  }
+</style>

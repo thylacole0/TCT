@@ -1,0 +1,38 @@
+---
+interface Props {
+  padding?: 'sm' | 'md' | 'lg';
+  border?: boolean;
+  raised?: boolean;
+}
+
+const { padding = 'md', border = true, raised = false } = Astro.props;
+
+const paddingMap = {
+  sm: 'var(--space-sm)',
+  md: 'var(--space-md)',
+  lg: 'var(--space-lg)',
+};
+---
+
+<div 
+  class:list={['card', { 'card-border': border, 'card-raised': raised }]}
+  style={`padding: ${paddingMap[padding]};`}
+>
+  <slot />
+</div>
+
+<style>
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    transition: background var(--duration-normal) var(--ease-out);
+  }
+
+  .card-border {
+    border: 1px solid var(--border);
+  }
+
+  .card-raised {
+    background: var(--surface-raised);
+  }
+</style>

@@ -1,0 +1,241 @@
+---
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+
+const navItems = [
+  { label: 'DASHBOARD', href: '/' },
+  { label: 'LIMPIEZA', href: '/limpieza' },
+  { label: 'FINANZAS', href: '/finanzas' },
+  { label: 'CONFIG', href: '/config' },
+];
+---
+
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-dot"></span>
+      <span class="brand-text">TCT</span>
+    </div>
+    <div class="nav-links">
+      {navItems.map((item) => {
+        const isActive = currentPath === item.href || 
+          (item.href !== '/' && currentPath.startsWith(item.href));
+        return (
+          <a 
+            href={item.href} 
+            class:list={['nav-link', { active: isActive }]}
+          >
+            {isActive ? `[ ${item.label} ]` : item.label}
+          </a>
+        );
+      })}
+    </div>
+    <div class="nav-actions">
+      <button id="theme-toggle" class="theme-btn" aria-label="Toggle theme">
+        <span class="theme-icon">◐</span>
+      </button>
+      <a href="/api/auth/signout" class="nav-link signout">SALIR</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile bottom nav -->
+<nav class="nav-mobile">
+  {navItems.map((item) => {
+    const isActive = currentPath === item.href || 
+      (item.href !== '/' && currentPath.startsWith(item.href));
+    return (
+      <a 
+        href={item.href} 
+        class:list={['nav-mobile-link', { active: isActive }]}
+      >
+        <span class="nav-mobile-label">{item.label}</span>
+        {isActive && <span class="nav-mobile-dot"></span>}
+      </a>
+    );
+  })}
+</nav>
+
+<script>
+  function initTheme() {
+    const toggle = document.getElementById('theme-toggle');
+    const html = document.documentElement;
+    
+    // Load saved theme
+    const saved = localStorage.getItem('tct-theme');
+    if (saved) html.setAttribute('data-theme', saved);
+    
+    toggle?.addEventListener('click', () => {
+      const current = html.getAttribute('data-theme');
+      const next = current === 'light' ? 'dark' : 'light';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('tct-theme', next);
+    });
+  }
+
+  // Run on initial load and after view transitions
+  initTheme();
+  document.addEventListener('astro:after-swap', initTheme);
+</script>
+
+<style>
+  .nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--black);
+    border-bottom: 1px solid var(--border);
+    height: 56px;
+  }
+
+  .nav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-xl);
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .brand-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  .brand-text {
+    font-family: var(--font-mono);
+    font-size: var(--body);
+    font-weight: 700;
+    color: var(--text-display);
+    letter-spacing: 0.1em;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+  }
+
+  .nav-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-disabled);
+    text-decoration: none;
+    padding: var(--space-sm) 0;
+    transition: color var(--duration-micro) var(--ease-out);
+    white-space: nowrap;
+  }
+
+  .nav-link:hover {
+    color: var(--text-primary);
+  }
+
+  .nav-link.active {
+    color: var(--text-display);
+  }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .theme-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-xs);
+    color: var(--text-secondary);
+    font-size: 18px;
+    transition: color var(--duration-micro) var(--ease-out);
+    line-height: 1;
+  }
+
+  .theme-btn:hover {
+    color: var(--text-display);
+  }
+
+  .signout {
+    color: var(--text-disabled);
+    font-size: var(--label);
+  }
+
+  .signout:hover {
+    color: var(--accent);
+  }
+
+  /* Mobile bottom nav */
+  .nav-mobile {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--black);
+    border-top: 1px solid var(--border);
+    height: 64px;
+    padding: 0 var(--space-sm);
+    justify-content: space-around;
+    align-items: center;
+  }
+
+  .nav-mobile-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+    text-decoration: none;
+    padding: var(--space-sm) var(--space-sm);
+    min-width: 60px;
+  }
+
+  .nav-mobile-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-disabled);
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+
+  .nav-mobile-link.active .nav-mobile-label {
+    color: var(--text-display);
+  }
+
+  .nav-mobile-dot {
+    width: 4px;
+    height: 4px;
+    background: var(--text-display);
+    border-radius: 50%;
+  }
+
+  @media (max-width: 768px) {
+    .nav {
+      height: 48px;
+    }
+    .nav-links {
+      display: none;
+    }
+    .nav-mobile {
+      display: flex;
+    }
+  }
+</style>

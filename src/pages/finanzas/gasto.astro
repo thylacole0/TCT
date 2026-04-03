@@ -1,0 +1,89 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ExpenseForm from '../../components/islands/ExpenseForm';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Current week
+const today = new Date();
+const dayOfWeek = today.getDay();
+const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+const weekStart = new Date(today);
+weekStart.setDate(today.getDate() + mondayOffset);
+const weekStartStr = weekStart.toISOString().split('T')[0];
+
+// Get current budget week
+const { data: currentBudget } = await supabase
+  .from('budget_weeks')
+  .select('*')
+  .eq('week_start', weekStartStr)
+  .single();
+
+const expenseCategories = ['Supermercado', 'Feria', 'Delivery', 'Otro'];
+---
+
+<Layout title="TCT — Registrar Gasto" currentPath="/finanzas">
+  <div class="gasto-page">
+    <section class="header-section">
+      <a href="/finanzas" class="back-link">← FINANZAS</a>
+    </section>
+
+    <h2 class="page-title">REGISTRAR GASTO</h2>
+
+    {!currentBudget && (
+      <div class="warning-box">[SIN PRESUPUESTO SEMANAL — EL GASTO SE REGISTRARÁ SIN ASOCIAR]</div>
+    )}
+
+    {/* Island */}
+    <ExpenseForm 
+      client:load 
+      budgetWeekId={currentBudget?.id} 
+      categories={expenseCategories} 
+    />
+  </div>
+</Layout>
+
+<style>
+  .gasto-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+    max-width: 480px;
+  }
+
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .back-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .back-link:hover { color: var(--text-display); }
+
+  .page-title {
+    font-family: var(--font-mono);
+    font-size: var(--heading);
+    letter-spacing: -0.01em;
+    color: var(--text-display);
+    font-weight: 400;
+  }
+
+  .warning-box {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--warning);
+    letter-spacing: 0.02em;
+    padding-bottom: var(--space-sm);
+  }
+</style>

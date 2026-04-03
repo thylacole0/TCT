@@ -1,0 +1,111 @@
+---
+interface Props {
+  value: number;
+  max: number;
+  segments?: number;
+  label?: string;
+  showValue?: boolean;
+  color?: string;
+  size?: 'hero' | 'standard' | 'compact';
+}
+
+const { 
+  value, 
+  max, 
+  segments = 20, 
+  label, 
+  showValue = true, 
+  color = 'var(--text-display)',
+  size = 'standard' 
+} = Astro.props;
+
+const filled = Math.min(Math.round((value / max) * segments), segments);
+const overflow = value > max;
+const percentage = Math.round((value / max) * 100);
+
+const sizeMap = {
+  hero: '16px',
+  standard: '8px',
+  compact: '4px',
+};
+
+// Determine fill color based on percentage
+function getFillColor(pct: number): string {
+  if (pct > 100) return 'var(--accent)';
+  if (pct > 75) return 'var(--warning)';
+  return color;
+}
+
+const fillColor = getFillColor(percentage);
+---
+
+<div class="segmented-bar">
+  {(label || showValue) && (
+    <div class="bar-header">
+      {label && <span class="bar-label">{label}</span>}
+      {showValue && (
+        <span class="bar-value" style={`color: ${fillColor};`}>
+          {value.toLocaleString('es-CL')}<span class="bar-separator">/</span>{max.toLocaleString('es-CL')}
+        </span>
+      )}
+    </div>
+  )}
+  <div class="bar-track" style={`height: ${sizeMap[size]};`}>
+    {Array.from({ length: segments }).map((_, i) => (
+      <div 
+        class:list={['bar-segment', { filled: i < filled, overflow: i < filled && overflow }]}
+        style={i < filled ? `background: ${overflow ? 'var(--accent)' : fillColor};` : ''}
+      />
+    ))}
+  </div>
+</div>
+
+<style>
+  .segmented-bar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    width: 100%;
+  }
+
+  .bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .bar-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .bar-value {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
+  }
+
+  .bar-separator {
+    color: var(--text-disabled);
+    margin: 0 2px;
+  }
+
+  .bar-track {
+    display: flex;
+    gap: 2px;
+    width: 100%;
+  }
+
+  .bar-segment {
+    flex: 1;
+    background: var(--border);
+    transition: background var(--duration-micro) var(--ease-out);
+  }
+
+  [data-theme="light"] .bar-segment:not(.filled) {
+    background: #E0E0E0;
+  }
+</style>

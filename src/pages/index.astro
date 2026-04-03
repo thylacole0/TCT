@@ -1,11 +1,445 @@
 ---
-import Welcome from '../components/Welcome.astro';
 import Layout from '../layouts/Layout.astro';
+import HeroNumber from '../components/HeroNumber.astro';
+import SegmentedBar from '../components/SegmentedBar.astro';
+import StatRow from '../components/StatRow.astro';
+import Card from '../components/Card.astro';
+import { createAuthClient } from '../lib/supabase';
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Current month boundaries
+const now = new Date();
+const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
+
+// Current week budget
+const today = new Date();
+const dayOfWeek = today.getDay();
+const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+const weekStart = new Date(today);
+weekStart.setDate(today.getDate() + mondayOffset);
+const weekStartStr = weekStart.toISOString().split('T')[0];
+
+// Parallel fetch all independent queries
+const [profilesRes, choreLogsRes, budgetRes, recentExpensesRes] = await Promise.all([
+  supabase.from('profiles').select('*'),
+  supabase.from('chore_logs')
+    .select('*, chores(name, points), profiles(display_name)')
+    .gte('completed_at', monthStart)
+    .lte('completed_at', monthEnd)
+    .order('completed_at', { ascending: false }),
+  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).single(),
+  supabase.from('expenses')
+    .select('*, profiles(display_name)')
+    .order('created_at', { ascending: false })
+    .limit(5),
+]);
+
+const profiles = profilesRes.data;
+const choreLogs = choreLogsRes.data;
+const currentBudget = budgetRes.data;
+const recentExpenses = recentExpensesRes.data;
+
+// Calculate scores per user
+const scores: Record<string, number> = {};
+profiles?.forEach(p => { scores[p.id] = 0; });
+choreLogs?.forEach(log => {
+  scores[log.user_id] = (scores[log.user_id] || 0) + log.points_earned;
+});
+
+const totalPoints = Object.values(scores).reduce((a, b) => a + b, 0);
+const myScore = scores[user.id] || 0;
+
+// Week expenses (depends on budget result)
+let weekExpenses = 0;
+if (currentBudget) {
+  const { data: expenses } = await supabase
+    .from('expenses')
+    .select('amount')
+    .eq('budget_week_id', currentBudget.id);
+  weekExpenses = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+}
+
+const budgetAmount = currentBudget ? Number(currentBudget.budget_amount) : 0;
+
+// Format CLP
+const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
+
+// Recent activity (last 5)
+const recentLogs = choreLogs?.slice(0, 5) || [];
 ---
 
-<Layout>
-	<Welcome />
+<Layout title="TCT — Dashboard" currentPath="/">
+  <div class="dashboard">
+    <!-- HERO: Month scores -->
+    <section class="hero-section">
+      <div class="hero-meta">
+        <span class="label">{monthLabel}</span>
+      </div>
+      <div class="hero-scores">
+        {profiles?.map((p) => (
+          <div class="hero-player">
+            <HeroNumber 
+              value={scores[p.id] || 0} 
+              unit="PTS"
+              label={p.display_name}
+              size={p.id === user.id ? 'xl' : 'lg'}
+              color={p.id === user.id ? 'var(--text-display)' : 'var(--text-secondary)'}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- SCORE COMPARISON BAR -->
+    <section class="comparison-section">
+      <div class="comparison-bar-label label">COMPARACIÓN DEL MES</div>
+      <div class="comparison-bar">
+        {profiles?.map((p, i) => {
+          const pct = totalPoints > 0 ? (scores[p.id] / totalPoints) * 100 : 50;
+          return (
+            <div 
+              class="comparison-segment"
+              style={`width: ${pct}%; background: ${i === 0 ? 'var(--text-display)' : 'var(--text-disabled)'};`}
+            >
+              <span class="comparison-name">{(p as any).display_name.split(' ')[0]}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+
+    <!-- BUDGET WIDGET -->
+    <section class="budget-section">
+      <Card padding="lg">
+        <div class="budget-header">
+          <span class="label">PRESUPUESTO SEMANAL — COMIDA</span>
+          <a href="/finanzas" class="view-link">VER TODO →</a>
+        </div>
+        {budgetAmount > 0 ? (
+          <div class="budget-content">
+            <div class="budget-numbers">
+              <span class="budget-spent" style={weekExpenses > budgetAmount ? 'color: var(--accent);' : ''}>
+                {formatCLP(weekExpenses)}
+              </span>
+              <span class="budget-total">/ {formatCLP(budgetAmount)}</span>
+            </div>
+            <SegmentedBar 
+              value={weekExpenses} 
+              max={budgetAmount} 
+              segments={15}
+              showValue={false}
+              size="standard"
+            />
+            <div class="budget-remaining">
+              <span class="label">RESTANTE</span>
+              <span class="budget-remain-value" style={budgetAmount - weekExpenses < 0 ? 'color: var(--accent);' : 'color: var(--success);'}>
+                {formatCLP(budgetAmount - weekExpenses)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div class="budget-empty">
+            <p class="text-disabled">[SIN PRESUPUESTO ESTA SEMANA]</p>
+            <a href="/finanzas/presupuesto" class="set-budget-link">ESTABLECER PRESUPUESTO</a>
+          </div>
+        )}
+      </Card>
+    </section>
+
+    <!-- RECENT ACTIVITY -->
+    <section class="activity-section">
+      <div class="section-header">
+        <span class="label">ACTIVIDAD RECIENTE</span>
+      </div>
+      <div class="activity-list">
+        {recentLogs.map((log: any) => {
+          const time = new Date(log.completed_at);
+          const timeStr = time.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
+          return (
+            <div class="activity-row">
+              <div class="activity-info">
+                <span class="activity-name">{log.chores?.name}</span>
+                <span class="caption">{log.profiles?.display_name} · {timeStr}</span>
+              </div>
+              <span class="activity-points">+{log.points_earned}</span>
+            </div>
+          );
+        })}
+        {recentExpenses?.map((exp: any) => {
+          const time = new Date(exp.created_at);
+          const timeStr = time.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
+          return (
+            <div class="activity-row">
+              <div class="activity-info">
+                <span class="activity-name">{exp.description}</span>
+                <span class="caption">{exp.profiles?.display_name} · {timeStr} · {exp.category}</span>
+              </div>
+              <span class="activity-expense">-{formatCLP(Number(exp.amount))}</span>
+            </div>
+          );
+        })}
+        {(!recentLogs.length && !recentExpenses?.length) && (
+          <p class="text-disabled" style="padding: var(--space-xl) 0; text-align: center;">
+            [SIN ACTIVIDAD]
+          </p>
+        )}
+      </div>
+    </section>
+
+    <!-- QUICK ACTIONS -->
+    <section class="quick-actions">
+      <a href="/limpieza" class="quick-action-btn">
+        <span class="qa-label">REGISTRAR TAREA</span>
+        <span class="qa-arrow">→</span>
+      </a>
+      <a href="/finanzas/gasto" class="quick-action-btn">
+        <span class="qa-label">REGISTRAR GASTO</span>
+        <span class="qa-arrow">→</span>
+      </a>
+    </section>
+  </div>
 </Layout>
+
+<style>
+  .dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xl);
+  }
+
+  /* Hero Section */
+  .hero-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+
+  .hero-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .hero-scores {
+    display: flex;
+    gap: var(--space-3xl);
+    align-items: flex-end;
+  }
+
+  .hero-player {
+    flex: 1;
+  }
+
+  /* Comparison Bar */
+  .comparison-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .comparison-bar {
+    display: flex;
+    height: 32px;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .comparison-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: width var(--duration-slow) var(--ease-out);
+    min-width: 40px;
+  }
+
+  .comparison-name {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--black);
+    font-weight: 700;
+  }
+
+  /* Budget Section */
+  .budget-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+  }
+
+  .view-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-disabled);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+
+  .view-link:hover {
+    color: var(--text-display);
+  }
+
+  .budget-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .budget-numbers {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-xs);
+  }
+
+  .budget-spent {
+    font-family: var(--font-mono);
+    font-size: var(--heading);
+    font-weight: 700;
+    color: var(--text-display);
+  }
+
+  .budget-total {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    color: var(--text-disabled);
+  }
+
+  .budget-remaining {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .budget-remain-value {
+    font-family: var(--font-mono);
+    font-size: var(--body);
+    font-weight: 700;
+  }
+
+  .budget-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-lg) 0;
+  }
+
+  .set-budget-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--interactive);
+    text-decoration: none;
+  }
+
+  /* Activity */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .activity-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .activity-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .activity-row:last-child {
+    border-bottom: none;
+  }
+
+  .activity-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .activity-name {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+  }
+
+  .activity-points {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
+    color: var(--success);
+  }
+
+  .activity-expense {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  /* Quick Actions */
+  .quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+  }
+
+  .quick-action-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md) var(--space-lg);
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-compact);
+    text-decoration: none;
+    transition: all var(--duration-micro) var(--ease-out);
+  }
+
+  .quick-action-btn:hover {
+    border-color: var(--text-primary);
+  }
+
+  .qa-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-primary);
+  }
+
+  .qa-arrow {
+    font-size: var(--body);
+    color: var(--text-disabled);
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+
+  .quick-action-btn:hover .qa-arrow {
+    color: var(--text-display);
+  }
+
+  @media (max-width: 768px) {
+    .hero-scores {
+      flex-direction: column;
+      gap: var(--space-lg);
+      align-items: flex-start;
+    }
+    .quick-actions {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

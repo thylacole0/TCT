@@ -1,0 +1,63 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import MealPlanner from '../../components/islands/MealPlanner';
+import { createAuthClient } from '../../lib/supabase';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Fetch meal types
+const { data: mealTypes } = await supabase
+  .from('meal_types')
+  .select('*')
+  .order('sort_order');
+---
+
+<Layout title="TCT — Planificador de Comidas" currentPath="/finanzas">
+  <div class="comidas-page">
+    <section class="header-section">
+      <a href="/finanzas" class="back-link">← FINANZAS</a>
+    </section>
+
+    <h2 class="page-title">PLANIFICADOR</h2>
+
+    {/* Island */}
+    <MealPlanner client:load mealTypes={mealTypes || []} />
+  </div>
+</Layout>
+
+<style>
+  .comidas-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .back-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .back-link:hover { color: var(--text-display); }
+
+  .page-title {
+    font-family: var(--font-mono);
+    font-size: var(--heading);
+    letter-spacing: -0.01em;
+    color: var(--text-display);
+    font-weight: 400;
+  }
+</style>
