@@ -567,10 +567,36 @@
 }
 
 /* Quick actions */
-.fh-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-md);
+.fh-add-expense-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-compact);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  transition: border-color var(--duration-micro) var(--ease-out),
+              background var(--duration-micro) var(--ease-out);
+}
+
+.fh-add-expense-btn:hover {
+  border-color: var(--text-primary);
+}
+
+.fh-add-expense-btn-active {
+  border-color: var(--text-display);
+  background: rgba(255,255,255,0.03);
+}
+
+.fh-expense-form-wrapper {
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+  animation: fhFadeIn var(--duration-normal) var(--ease-out);
 }
 
 .fh-action-btn {
@@ -602,12 +628,16 @@
 }
 
 @media (max-width: 768px) {
-  .fh-actions {
-    grid-template-columns: 1fr;
-  }
   .fh-hero-value {
     font-size: var(--heading);
   }
+}
+
+/* Comidas Panel */
+.fh-comidas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xl);
 }
 
 /* MEAL PLANNER */

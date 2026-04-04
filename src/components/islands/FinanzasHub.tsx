@@ -44,7 +44,7 @@ interface Props {
   categoryTotals: Array<[string, number]>;
 }
 
-type ActivePanel = "dashboard" | "comidas" | "gasto";
+type ActivePanel = "finanzas" | "comidas";
 
 // ─── Helpers ───
 const DAYS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -75,7 +75,7 @@ function generateId() {
 
 // ─── Main Component ───
 export default function FinanzasHub(props: Props) {
-  const [activePanel, setActivePanel] = useState<ActivePanel>("dashboard");
+  const [activePanel, setActivePanel] = useState<ActivePanel>("finanzas");
   const [todaysMeals, setTodaysMeals] = useState<Record<string, string>>(props.todaysMeals);
 
   const switchPanel = (panel: ActivePanel) => {
@@ -99,10 +99,10 @@ export default function FinanzasHub(props: Props) {
       {/* Tab bar */}
       <div class="fh-tabs">
         <button
-          class={`fh-tab ${activePanel === "dashboard" ? "fh-tab-active" : ""}`}
-          onClick={() => switchPanel("dashboard")}
+          class={`fh-tab ${activePanel === "finanzas" ? "fh-tab-active" : ""}`}
+          onClick={() => switchPanel("finanzas")}
         >
-          RESUMEN
+          FINANZAS
         </button>
         <button
           class={`fh-tab ${activePanel === "comidas" ? "fh-tab-active" : ""}`}
@@ -110,59 +110,39 @@ export default function FinanzasHub(props: Props) {
         >
           COMIDAS
         </button>
-        <button
-          class={`fh-tab ${activePanel === "gasto" ? "fh-tab-active" : ""}`}
-          onClick={() => switchPanel("gasto")}
-        >
-          + GASTO
-        </button>
       </div>
 
       {/* Panels */}
       <div class="fh-panel-wrapper">
         <div
           class="fh-panel"
-          style={{ display: activePanel === "dashboard" ? "block" : "none" }}
+          style={{ display: activePanel === "finanzas" ? "block" : "none" }}
         >
-          <DashboardPanel {...props} todaysMeals={todaysMeals} onNavigate={switchPanel} />
+          <FinanzasPanel {...props} />
         </div>
         <div
           class="fh-panel"
           style={{ display: activePanel === "comidas" ? "block" : "none" }}
         >
-          <MealPlannerPanel mealTypes={props.mealTypes} onTodayMealChange={handleTodayMealChange} />
-        </div>
-        <div
-          class="fh-panel"
-          style={{ display: activePanel === "gasto" ? "block" : "none" }}
-        >
-          <ExpensePanel
-            budgetWeekId={props.budgetWeekId}
-            categories={props.categories}
-            onSuccess={() => {
-              // After success, go back to dashboard. Page will refresh data on next SSR load.
-              setTimeout(() => {
-                window.location.reload();
-              }, 600);
-            }}
-          />
+          <ComidasPanel mealTypes={props.mealTypes} todaysMeals={todaysMeals} onTodayMealChange={handleTodayMealChange} />
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Dashboard Panel ───
-function DashboardPanel({
+// ─── Finanzas Panel (Budget + Expenses + Inline Form) ───
+function FinanzasPanel({
   budgetAmount,
   totalSpent,
   weekLabel,
-  todaysMeals,
   expenses,
   dailySpending,
   categoryTotals,
-  onNavigate,
-}: Props & { onNavigate: (p: ActivePanel) => void }) {
+  budgetWeekId,
+  categories,
+}: Props) {
+  const [showForm, setShowForm] = useState(false);
   const remaining = budgetAmount - totalSpent;
   const pct = budgetAmount > 0 ? Math.min((totalSpent / budgetAmount) * 100, 100) : 0;
   const overflow = totalSpent > budgetAmount;
@@ -217,24 +197,6 @@ function DashboardPanel({
         </div>
       )}
 
-      {/* Today's meals */}
-      <div class="fh-section">
-        <div class="fh-section-header">
-          <span class="fh-label">COMIDAS DE HOY</span>
-          <button class="fh-link-btn" onClick={() => onNavigate("comidas")}>
-            PLANIFICADOR →
-          </button>
-        </div>
-        <div class="fh-meals-list">
-          {["Desayuno", "Almuerzo", "Once"].map((type) => (
-            <div class="fh-meal-row" key={type}>
-              <span class="fh-meal-type">{type}</span>
-              <span class="fh-meal-desc">{todaysMeals[type] || "—"}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Daily chart */}
       {budgetAmount > 0 && (
         <div class="fh-section">
@@ -278,6 +240,31 @@ function DashboardPanel({
         </div>
       )}
 
+      {/* Add expense toggle */}
+      <div class="fh-section">
+        <button
+          class={`fh-add-expense-btn ${showForm ? "fh-add-expense-btn-active" : ""}`}
+          onClick={() => setShowForm(!showForm)}
+        >
+          <span>{showForm ? "OCULTAR FORMULARIO" : "+ REGISTRAR GASTO"}</span>
+          <span class="fh-action-arrow">{showForm ? "↑" : "↓"}</span>
+        </button>
+
+        {showForm && (
+          <div class="fh-expense-form-wrapper">
+            <ExpensePanel
+              budgetWeekId={budgetWeekId}
+              categories={categories}
+              onSuccess={() => {
+                setTimeout(() => {
+                  window.location.reload();
+                }, 600);
+              }}
+            />
+          </div>
+        )}
+      </div>
+
       {/* Expenses list */}
       <div class="fh-section">
         <div class="fh-section-header">
@@ -310,23 +297,36 @@ function DashboardPanel({
         </div>
       </div>
 
-      {/* Quick actions */}
-      <div class="fh-actions">
-        <button class="fh-action-btn" onClick={() => onNavigate("gasto")}>
-          <span class="fh-action-label">REGISTRAR GASTO</span>
-          <span class="fh-action-arrow">→</span>
-        </button>
-        <button class="fh-action-btn" onClick={() => onNavigate("comidas")}>
-          <span class="fh-action-label">PLANIFICAR COMIDAS</span>
-          <span class="fh-action-arrow">→</span>
-        </button>
-        <a href="/finanzas/presupuesto" class="fh-action-btn" style={{ gridColumn: "1 / -1" }}>
-          <span class="fh-action-label">
-            {budgetAmount > 0 ? "EDITAR PRESUPUESTO" : "ESTABLECER PRESUPUESTO"}
-          </span>
-          <span class="fh-action-arrow">→</span>
-        </a>
+      {/* Budget link */}
+      <a href="/finanzas/presupuesto" class="fh-action-btn" style={{ marginTop: "var(--space-md)" }}>
+        <span class="fh-action-label">
+          {budgetAmount > 0 ? "EDITAR PRESUPUESTO" : "ESTABLECER PRESUPUESTO"}
+        </span>
+        <span class="fh-action-arrow">→</span>
+      </a>
+    </div>
+  );
+}
+
+// ─── Comidas Panel (Today's meals + Planner) ───
+function ComidasPanel({ mealTypes, todaysMeals, onTodayMealChange }: { mealTypes: MealType[]; todaysMeals: Record<string, string>; onTodayMealChange: (typeName: string, description: string | null) => void }) {
+  return (
+    <div class="fh-comidas">
+      {/* Today's meals */}
+      <div class="fh-section">
+        <span class="fh-label">COMIDAS DE HOY</span>
+        <div class="fh-meals-list">
+          {mealTypes.map((mt) => (
+            <div class="fh-meal-row" key={mt.id}>
+              <span class="fh-meal-type">{mt.name}</span>
+              <span class="fh-meal-desc">{todaysMeals[mt.name] || "—"}</span>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Planner */}
+      <MealPlannerPanel mealTypes={mealTypes} onTodayMealChange={onTodayMealChange} />
     </div>
   );
 }
