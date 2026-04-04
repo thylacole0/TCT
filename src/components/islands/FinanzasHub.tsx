@@ -42,6 +42,7 @@ interface Props {
   categories: string[];
   dailySpending: Record<string, number>;
   categoryTotals: Array<[string, number]>;
+  productTotals: Array<[string, number]>;
 }
 
 type ActivePanel = "finanzas" | "comidas";
@@ -71,6 +72,61 @@ function formatDateISO(d: Date): string {
 
 function generateId() {
   return Math.random().toString(36).substring(2, 9);
+}
+
+// ─── Pie Chart ───
+const PIE_COLORS = ["#FFFFFF", "#D71921", "#5B9BF6", "#4A9E5C", "#D4A843", "#999999", "#E8E8E8", "#666666", "#333333", "#FF6B6B"];
+
+function PieChart({ data, size = 140 }: { data: Array<[string, number]>; size?: number }) {
+  const total = data.reduce((s, [, v]) => s + v, 0);
+  if (total === 0) return null;
+
+  const r = size / 2;
+  const cx = r;
+  const cy = r;
+  const innerR = r * 0.55;
+  let cumAngle = -Math.PI / 2;
+
+  const slices = data.map(([label, value], i) => {
+    const angle = (value / total) * 2 * Math.PI;
+    const startX = cx + r * Math.cos(cumAngle);
+    const startY = cy + r * Math.sin(cumAngle);
+    const endX = cx + r * Math.cos(cumAngle + angle);
+    const endY = cy + r * Math.sin(cumAngle + angle);
+    const innerStartX = cx + innerR * Math.cos(cumAngle + angle);
+    const innerStartY = cy + innerR * Math.sin(cumAngle + angle);
+    const innerEndX = cx + innerR * Math.cos(cumAngle);
+    const innerEndY = cy + innerR * Math.sin(cumAngle);
+    const largeArc = angle > Math.PI ? 1 : 0;
+
+    const d = [
+      `M ${startX} ${startY}`,
+      `A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY}`,
+      `L ${innerStartX} ${innerStartY}`,
+      `A ${innerR} ${innerR} 0 ${largeArc} 0 ${innerEndX} ${innerEndY}`,
+      "Z",
+    ].join(" ");
+
+    cumAngle += angle;
+    return <path key={i} d={d} fill={PIE_COLORS[i % PIE_COLORS.length]} opacity={0.85} />;
+  });
+
+  return (
+    <div class="fh-pie-wrap">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {slices}
+      </svg>
+      <div class="fh-pie-legend">
+        {data.map(([label, value], i) => (
+          <div class="fh-pie-legend-item" key={label}>
+            <span class="fh-pie-dot" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+            <span class="fh-pie-legend-label">{label}</span>
+            <span class="fh-pie-legend-val">{formatCLP(value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ─── Main Component ───
@@ -131,7 +187,7 @@ export default function FinanzasHub(props: Props) {
   );
 }
 
-// ─── Finanzas Panel (Budget + Expenses + Inline Form) ───
+// ─── Finanzas Panel (Side-by-side layout) ───
 function FinanzasPanel({
   budgetAmount,
   totalSpent,
@@ -139,19 +195,18 @@ function FinanzasPanel({
   expenses,
   dailySpending,
   categoryTotals,
+  productTotals,
   budgetWeekId,
   categories,
 }: Props) {
-  const [showForm, setShowForm] = useState(false);
   const remaining = budgetAmount - totalSpent;
   const pct = budgetAmount > 0 ? Math.min((totalSpent / budgetAmount) * 100, 100) : 0;
   const overflow = totalSpent > budgetAmount;
   const maxDaily = Math.max(...Object.values(dailySpending), 1);
-  const maxCat = categoryTotals.length > 0 ? categoryTotals[0][1] : 1;
 
   return (
     <div class="fh-dashboard">
-      {/* Budget hero */}
+      {/* ── Row 1: Budget hero (full width) ── */}
       <div class="fh-week-header">
         <span class="fh-label">SEMANA ACTUAL</span>
         <span class="fh-label">{weekLabel}</span>
@@ -197,61 +252,53 @@ function FinanzasPanel({
         </div>
       )}
 
-      {/* Daily chart */}
-      {budgetAmount > 0 && (
-        <div class="fh-section">
-          <span class="fh-label">GASTO DIARIO</span>
-          <div class="fh-daily-chart">
-            {Object.entries(dailySpending).map(([day, amount]) => (
-              <div class="fh-daily-col" key={day}>
-                <div class="fh-daily-track">
-                  <div
-                    class="fh-daily-fill"
-                    style={{ height: `${(amount / maxDaily) * 100}%` }}
-                  />
-                </div>
-                <span class="fh-daily-day">{day}</span>
+      {/* ── Row 2: Charts side-by-side ── */}
+      {(categoryTotals.length > 0 || budgetAmount > 0) && (
+        <div class="fh-charts-grid">
+          {/* Daily chart */}
+          {budgetAmount > 0 && (
+            <div class="fh-section fh-chart-card">
+              <span class="fh-label">GASTO DIARIO</span>
+              <div class="fh-daily-chart">
+                {Object.entries(dailySpending).map(([day, amount]) => (
+                  <div class="fh-daily-col" key={day}>
+                    <div class="fh-daily-track">
+                      <div
+                        class="fh-daily-fill"
+                        style={{ height: `${(amount / maxDaily) * 100}%` }}
+                      />
+                    </div>
+                    <span class="fh-daily-day">{day}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+
+          {/* Category pie */}
+          {categoryTotals.length > 0 && (
+            <div class="fh-section fh-chart-card">
+              <span class="fh-label">POR CATEGORÍA</span>
+              <PieChart data={categoryTotals} />
+            </div>
+          )}
+
+          {/* Product pie */}
+          {productTotals.length > 0 && (
+            <div class="fh-section fh-chart-card">
+              <span class="fh-label">TOP PRODUCTOS</span>
+              <PieChart data={productTotals} />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Categories */}
-      {categoryTotals.length > 0 && (
-        <div class="fh-section">
-          <span class="fh-label">POR CATEGORÍA</span>
-          <div class="fh-cat-list">
-            {categoryTotals.map(([cat, amt]) => (
-              <div class="fh-cat-row" key={cat}>
-                <div class="fh-cat-info">
-                  <span class="fh-cat-name">{cat}</span>
-                  <span class="fh-cat-amount">{formatCLP(amt)}</span>
-                </div>
-                <div class="fh-cat-bar-track">
-                  <div
-                    class="fh-cat-bar-fill"
-                    style={{ width: `${(amt / maxCat) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Add expense toggle */}
-      <div class="fh-section">
-        <button
-          class={`fh-add-expense-btn ${showForm ? "fh-add-expense-btn-active" : ""}`}
-          onClick={() => setShowForm(!showForm)}
-        >
-          <span>{showForm ? "OCULTAR FORMULARIO" : "+ REGISTRAR GASTO"}</span>
-          <span class="fh-action-arrow">{showForm ? "↑" : "↓"}</span>
-        </button>
-
-        {showForm && (
-          <div class="fh-expense-form-wrapper">
+      {/* ── Row 3: Form (left) + Expenses list (right) ── */}
+      <div class="fh-split-grid">
+        {/* Left: Expense form */}
+        <div class="fh-split-col">
+          <div class="fh-section">
+            <span class="fh-label">REGISTRAR GASTO</span>
             <ExpensePanel
               budgetWeekId={budgetWeekId}
               categories={categories}
@@ -262,43 +309,45 @@ function FinanzasPanel({
               }}
             />
           </div>
-        )}
-      </div>
-
-      {/* Expenses list */}
-      <div class="fh-section">
-        <div class="fh-section-header">
-          <span class="fh-label">GASTOS DE LA SEMANA</span>
-          <span class="fh-caption">{expenses.length} REGISTROS</span>
         </div>
-        <div class="fh-expense-list">
-          {expenses.map((exp) => {
-            const date = new Date(exp.expense_date).toLocaleDateString("es-CL", {
-              weekday: "short",
-              day: "2-digit",
-            });
-            return (
-              <div class="fh-expense-row" key={exp.id}>
-                <div class="fh-expense-info">
-                  <span class="fh-expense-desc">{exp.description}</span>
-                  <span class="fh-caption">
-                    {exp.user_name} · {date} · {exp.category}
-                  </span>
-                </div>
-                <span class="fh-expense-amount">-{formatCLP(exp.amount)}</span>
-              </div>
-            );
-          })}
-          {expenses.length === 0 && (
-            <p class="fh-empty" style={{ padding: "var(--space-xl) 0", textAlign: "center" }}>
-              [SIN GASTOS ESTA SEMANA]
-            </p>
-          )}
+
+        {/* Right: Expenses list */}
+        <div class="fh-split-col">
+          <div class="fh-section">
+            <div class="fh-section-header">
+              <span class="fh-label">GASTOS DE LA SEMANA</span>
+              <span class="fh-caption">{expenses.length} REGISTROS</span>
+            </div>
+            <div class="fh-expense-list">
+              {expenses.map((exp) => {
+                const date = new Date(exp.expense_date).toLocaleDateString("es-CL", {
+                  weekday: "short",
+                  day: "2-digit",
+                });
+                return (
+                  <div class="fh-expense-row" key={exp.id}>
+                    <div class="fh-expense-info">
+                      <span class="fh-expense-desc">{exp.description}</span>
+                      <span class="fh-caption">
+                        {exp.user_name} · {date} · {exp.category}
+                      </span>
+                    </div>
+                    <span class="fh-expense-amount">-{formatCLP(exp.amount)}</span>
+                  </div>
+                );
+              })}
+              {expenses.length === 0 && (
+                <p class="fh-empty" style={{ padding: "var(--space-xl) 0", textAlign: "center" }}>
+                  [SIN GASTOS ESTA SEMANA]
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Budget link */}
-      <a href="/finanzas/presupuesto" class="fh-action-btn" style={{ marginTop: "var(--space-md)" }}>
+      <a href="/finanzas/presupuesto" class="fh-action-btn">
         <span class="fh-action-label">
           {budgetAmount > 0 ? "EDITAR PRESUPUESTO" : "ESTABLECER PRESUPUESTO"}
         </span>

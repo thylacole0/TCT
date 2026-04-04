@@ -34,11 +34,18 @@ const todaysMeals = todaysMealsRes.data;
 const mealTypes = mealTypesRes.data || [];
 
 // Expenses depend on budget
+const budgetId = currentBudget?.id || '00000000-0000-0000-0000-000000000000';
 const { data: expenses } = await supabase
   .from('expenses')
   .select('*, profiles(display_name)')
-  .eq('budget_week_id', currentBudget?.id || '00000000-0000-0000-0000-000000000000')
+  .eq('budget_week_id', budgetId)
   .order('expense_date', { ascending: false });
+
+// Fetch expense items for product breakdown
+const expenseIds = (expenses || []).map((e: any) => e.id);
+const { data: expenseItems } = expenseIds.length > 0
+  ? await supabase.from('expense_items').select('*').in('expense_id', expenseIds)
+  : { data: [] };
 
 const totalSpent = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
 const budgetAmount = currentBudget ? Number(currentBudget.budget_amount) : 0;
@@ -80,6 +87,14 @@ const serializedExpenses = (expenses || []).map((e: any) => ({
   user_name: e.profiles?.display_name || '',
 }));
 
+// Product breakdown from expense_items
+const productTotals: Record<string, number> = {};
+(expenseItems || []).forEach((item: any) => {
+  const name = item.name || 'Sin nombre';
+  productTotals[name] = (productTotals[name] || 0) + Number(item.quantity) * Number(item.unit_price);
+});
+const sortedProducts = Object.entries(productTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
 const expenseCategories = ['Supermercado', 'Feria', 'Delivery', 'Otro'];
 ---
 
@@ -93,6 +108,11 @@ const expenseCategories = ['Supermercado', 'Feria', 'Delivery', 'Otro'];
     mealTypes={mealTypes}
     todaysMeals={mealsMap}
     expenses={serializedExpenses}
+    categories={expenseCategories}
+    dailySpending={dailySpending}
+    categoryTotals={sortedCategories}
+    productTotals={sortedProducts}
+  />
     categories={expenseCategories}
     dailySpending={dailySpending}
     categoryTotals={sortedCategories}
