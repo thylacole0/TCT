@@ -275,7 +275,7 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
         </button>
       </div>
 
-      <div class="mp-grid">
+      <div class={`mp-grid ${loading ? 'mp-skeleton' : ''}`}>
         <div class="mp-header-cell mp-corner" />
         {mealTypes.map((mt) => (
           <div class="mp-header-cell" key={mt.id}>
@@ -329,8 +329,6 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
           );
         })}
       </div>
-
-      {loading && <div class="mp-loading">CARGANDO...</div>}
     </div>
   );
 }

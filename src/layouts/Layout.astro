@@ -43,7 +43,7 @@ const {
   </head>
   <body>
     <!-- Page transition loader -->
-    <div id="page-loader" class="page-loader" aria-hidden="true">
+    <div id="page-loader" class="page-loader" aria-hidden="true" transition:persist>
       <div class="page-loader-inner">
         <div class="page-loader-dot"></div>
       </div>
@@ -179,7 +179,14 @@ const {
     const loader = document.getElementById('page-loader');
     if (!loader) return;
 
-    document.addEventListener('astro:before-preparation', () => {
+    // Show loader instantly on internal link click (before Astro starts fetching)
+    document.addEventListener('click', (e) => {
+      const link = (e.target as Element)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto:') || link.hasAttribute('data-astro-reload')) return;
+      // Same page — skip
+      if (href === window.location.pathname) return;
       loader.classList.remove('done');
       loader.classList.add('active');
     });
