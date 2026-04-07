@@ -78,6 +78,13 @@ const myProfile = profiles?.find(p => p.id === user.id);
     <section class="config-section">
       <span class="label">PERFIL</span>
       <Card padding="md">
+        <div class="profile-avatar-section">
+          {(myProfile as any)?.avatar_url ? (
+            <img src={(myProfile as any).avatar_url} alt="" width="48" height="48" class="profile-avatar" />
+          ) : (
+            <span class="profile-avatar-letter">{(myProfile?.display_name || '?')[0]}</span>
+          )}
+        </div>
         <form method="POST" class="profile-form">
           <input type="hidden" name="action" value="update_profile" />
           <div class="profile-row">
@@ -238,6 +245,30 @@ const myProfile = profiles?.find(p => p.id === user.id);
   }
 
   /* Profile */
+  .profile-avatar-section {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--space-md);
+  }
+
+  .profile-avatar {
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .profile-avatar-letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 22px;
+    font-family: var(--font-mono);
+  }
+
   .profile-form {
     display: flex;
     flex-direction: column;

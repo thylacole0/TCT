@@ -21,15 +21,34 @@ const {
 <html lang="es" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+
+    <!-- Fonts preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TCT" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
     <ClientRouter />
   </head>
   <body>
-    {showNav && <Navigation currentPath={currentPath} />}
+    <!-- Page transition loader -->
+    <div id="page-loader" class="page-loader" aria-hidden="true">
+      <div class="page-loader-inner">
+        <div class="page-loader-dot"></div>
+      </div>
+    </div>
+    {showNav && <Navigation currentPath={currentPath} currentSearch={Astro.url.search} />}
     <main class:list={[{ 'has-nav': showNav }]}>
       <slot />
     </main>
@@ -86,6 +105,50 @@ const {
     animation: none;
     mix-blend-mode: normal;
   }
+
+  /* Page transition loader — full body overlay */
+  .page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--black);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease-out;
+  }
+
+  .page-loader.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .page-loader.done {
+    opacity: 0;
+    transition: opacity 200ms ease-out;
+    pointer-events: none;
+  }
+
+  .page-loader-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .page-loader-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-display);
+    animation: loaderPulse 800ms ease-in-out infinite;
+  }
+
+  @keyframes loaderPulse {
+    0%, 100% { opacity: 0.2; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.8); }
+  }
 </style>
 
 <style>
@@ -97,7 +160,7 @@ const {
   }
 
   main.has-nav {
-    padding-top: calc(56px + var(--space-xl));
+    padding-top: calc(56px + env(safe-area-inset-top, 0px) + var(--space-xl));
   }
 
   @media (max-width: 768px) {
@@ -105,8 +168,34 @@ const {
       padding: var(--space-md);
     }
     main.has-nav {
-      padding-top: calc(48px + var(--space-lg));
-      padding-bottom: calc(64px + var(--space-lg));
+      padding-top: calc(48px + env(safe-area-inset-top, 0px) + var(--space-lg));
+      padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + var(--space-lg));
     }
   }
 </style>
+
+<script>
+  function initLoader() {
+    const loader = document.getElementById('page-loader');
+    if (!loader) return;
+
+    document.addEventListener('astro:before-preparation', () => {
+      loader.classList.remove('done');
+      loader.classList.add('active');
+    });
+
+    document.addEventListener('astro:after-swap', () => {
+      loader.classList.remove('active');
+      loader.classList.add('done');
+      setTimeout(() => loader.classList.remove('done'), 250);
+    });
+  }
+  initLoader();
+
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
+      console.warn('SW registration failed:', err);
+    });
+  }
+</script>

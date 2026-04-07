@@ -17,6 +17,13 @@ export const GET: APIRoute = async ({ request, url, cookies, redirect }) => {
 
   const { access_token, refresh_token } = data.session;
 
+  // Sync avatar from OAuth provider
+  const avatarUrl = data.user?.user_metadata?.avatar_url;
+  if (avatarUrl) {
+    const authClient = (await import("../../../lib/supabase")).createAuthClient(access_token);
+    await authClient.from("profiles").update({ avatar_url: avatarUrl }).eq("id", data.user.id);
+  }
+
   cookies.set("sb-access-token", access_token, {
     path: "/",
     httpOnly: true,

@@ -1,116 +1,138 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import FinanzasHub from '../../components/islands/FinanzasHub';
+import BudgetIsland from '../../components/islands/BudgetIsland';
 import { createAuthClient } from '../../lib/supabase';
+import { getMondayChile, formatDateCL } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 
 const supabase = createAuthClient(accessToken);
 
-// Current week calculation
-const today = new Date();
-const dayOfWeek = today.getDay();
-const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-const weekStart = new Date(today);
-weekStart.setDate(today.getDate() + mondayOffset);
+// Current week calculation (Chile timezone)
+const weekStart = getMondayChile();
 const weekEnd = new Date(weekStart);
 weekEnd.setDate(weekStart.getDate() + 6);
-const weekStartStr = weekStart.toISOString().split('T')[0];
+const weekStartStr = formatDateCL(weekStart);
 const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
-const todayStr = today.toISOString().split('T')[0];
 
-// Parallel: budget, profiles, today's meals, meal_types
-const [budgetRes, profilesRes, todaysMealsRes, mealTypesRes] = await Promise.all([
-  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).single(),
-  supabase.from('profiles').select('*'),
-  supabase.from('meal_plans').select('*, meal_types(name)').eq('meal_date', todayStr),
-  supabase.from('meal_types').select('*').order('sort_order'),
+// Parallel: budgets (comida + aseo)
+const [comidaBudgetRes, aseoBudgetRes] = await Promise.all([
+  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'comida').single(),
+  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'aseo').single(),
 ]);
 
-const currentBudget = budgetRes.data;
-const profiles = profilesRes.data;
-const todaysMeals = todaysMealsRes.data;
-const mealTypes = mealTypesRes.data || [];
+const currentBudget = comidaBudgetRes.data;
+const aseoBudget = aseoBudgetRes.data;
 
 // Expenses depend on budget
-const budgetId = currentBudget?.id || '00000000-0000-0000-0000-000000000000';
-const { data: expenses } = await supabase
-  .from('expenses')
-  .select('*, profiles(display_name)')
-  .eq('budget_week_id', budgetId)
-  .order('expense_date', { ascending: false });
+const comidaBudgetId = currentBudget?.id || '00000000-0000-0000-0000-000000000000';
+const aseoBudgetId = aseoBudget?.id || '00000000-0000-0000-0000-000000000000';
 
-// Fetch expense items for product breakdown
-const expenseIds = (expenses || []).map((e: any) => e.id);
-const { data: expenseItems } = expenseIds.length > 0
-  ? await supabase.from('expense_items').select('*').in('expense_id', expenseIds)
+const [comidaExpRes, aseoExpRes] = await Promise.all([
+  supabase.from('expenses').select('*, profiles(display_name, avatar_url)').eq('budget_week_id', comidaBudgetId).order('expense_date', { ascending: false }),
+  supabase.from('expenses').select('*, profiles(display_name, avatar_url)').eq('budget_week_id', aseoBudgetId).order('expense_date', { ascending: false }),
+]);
+
+const expenses = comidaExpRes.data || [];
+const aseoExpenses = aseoExpRes.data || [];
+
+// Fetch expense items for both
+const allExpenseIds = [...expenses, ...aseoExpenses].map((e: any) => e.id);
+const { data: expenseItems } = allExpenseIds.length > 0
+  ? await supabase.from('expense_items').select('*').in('expense_id', allExpenseIds)
   : { data: [] };
 
-const totalSpent = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
-const budgetAmount = currentBudget ? Number(currentBudget.budget_amount) : 0;
-
-// Category breakdown
-const categoryTotals: Record<string, number> = {};
-expenses?.forEach(e => {
-  const cat = e.category || 'Otros';
-  categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(e.amount);
-});
-const sortedCategories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
-
-// Daily spending
-const dailySpending: Record<string, number> = {};
-const dayNames = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
-for (let i = 0; i < 7; i++) {
-  dailySpending[dayNames[i]] = 0;
-}
-expenses?.forEach(e => {
-  const d = new Date(e.expense_date);
-  const dow = d.getDay();
-  const dayIdx = dow === 0 ? 6 : dow - 1;
-  dailySpending[dayNames[dayIdx]] = (dailySpending[dayNames[dayIdx]] || 0) + Number(e.amount);
-});
-
-// Today's meals map
-const mealsMap: Record<string, string> = {};
-todaysMeals?.forEach(m => {
-  mealsMap[m.meal_types?.name] = m.description;
-});
-
-// Serialize expenses for the island
-const serializedExpenses = (expenses || []).map((e: any) => ({
+// Serialize expenses helper
+const serializeExpenses = (exps: any[]) => exps.map((e: any) => ({
   id: e.id,
   description: e.description,
   amount: Number(e.amount),
   category: e.category,
   expense_date: e.expense_date,
   user_name: e.profiles?.display_name || '',
+  user_avatar: e.profiles?.avatar_url || '',
+  items: (expenseItems || [])
+    .filter((item: any) => item.expense_id === e.id)
+    .map((item: any) => ({ name: item.name, quantity: item.quantity, unit_price: Number(item.unit_price) })),
 }));
 
-// Product breakdown from expense_items
-const productTotals: Record<string, number> = {};
-(expenseItems || []).forEach((item: any) => {
-  const name = item.name || 'Sin nombre';
-  productTotals[name] = (productTotals[name] || 0) + Number(item.quantity) * Number(item.unit_price);
-});
-const sortedProducts = Object.entries(productTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
+// ─── Comida data ───
+const comidaTotalSpent = expenses.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+const comidaBudgetAmount = currentBudget ? Number(currentBudget.budget_amount) : 0;
 
-const expenseCategories = ['Supermercado', 'Feria', 'Delivery', 'Otro'];
+const comidaCategoryTotals: Record<string, number> = {};
+expenses.forEach(e => {
+  const cat = e.category || 'Otros';
+  comidaCategoryTotals[cat] = (comidaCategoryTotals[cat] || 0) + Number(e.amount);
+});
+
+const dayNames = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
+const comidaDailySpending: Record<string, number> = {};
+for (let i = 0; i < 7; i++) comidaDailySpending[dayNames[i]] = 0;
+expenses.forEach(e => {
+  const dow = new Date(e.expense_date).getDay();
+  const dayIdx = dow === 0 ? 6 : dow - 1;
+  comidaDailySpending[dayNames[dayIdx]] += Number(e.amount);
+});
+
+const comidaProductTotals: Record<string, number> = {};
+(expenseItems || []).filter((item: any) => expenses.some((e: any) => e.id === item.expense_id)).forEach((item: any) => {
+  const name = item.name || 'Sin nombre';
+  comidaProductTotals[name] = (comidaProductTotals[name] || 0) + Number(item.quantity) * Number(item.unit_price);
+});
+
+// ─── Aseo data ───
+const aseoTotalSpent = aseoExpenses.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+const aseoBudgetAmount = aseoBudget ? Number(aseoBudget.budget_amount) : 0;
+
+const aseoCategoryTotals: Record<string, number> = {};
+aseoExpenses.forEach(e => {
+  const cat = e.category || 'Otros';
+  aseoCategoryTotals[cat] = (aseoCategoryTotals[cat] || 0) + Number(e.amount);
+});
+
+const aseoDailySpending: Record<string, number> = {};
+for (let i = 0; i < 7; i++) aseoDailySpending[dayNames[i]] = 0;
+aseoExpenses.forEach(e => {
+  const dow = new Date(e.expense_date).getDay();
+  const dayIdx = dow === 0 ? 6 : dow - 1;
+  aseoDailySpending[dayNames[dayIdx]] += Number(e.amount);
+});
+
+const aseoProductTotals: Record<string, number> = {};
+(expenseItems || []).filter((item: any) => aseoExpenses.some((e: any) => e.id === item.expense_id)).forEach((item: any) => {
+  const name = item.name || 'Sin nombre';
+  aseoProductTotals[name] = (aseoProductTotals[name] || 0) + Number(item.quantity) * Number(item.unit_price);
+});
+
+const isReadOnly = Astro.locals.userRole === 'admin';
 ---
 
 <Layout title="TCT — Finanzas" currentPath="/finanzas">
-  <FinanzasHub
+  <BudgetIsland
     client:load
-    budgetWeekId={currentBudget?.id}
-    budgetAmount={budgetAmount}
-    totalSpent={totalSpent}
     weekLabel={weekLabel}
-    mealTypes={mealTypes}
-    todaysMeals={mealsMap}
-    expenses={serializedExpenses}
-    categories={expenseCategories}
-    dailySpending={dailySpending}
-    categoryTotals={sortedCategories}
-    productTotals={sortedProducts}
+    comida={{
+      budgetWeekId: currentBudget?.id,
+      budgetAmount: comidaBudgetAmount,
+      totalSpent: comidaTotalSpent,
+      expenses: serializeExpenses(expenses),
+      categories: ['Supermercado', 'Feria', 'Delivery', 'Otro'],
+      dailySpending: comidaDailySpending,
+      categoryTotals: Object.entries(comidaCategoryTotals).sort((a, b) => b[1] - a[1]),
+      productTotals: Object.entries(comidaProductTotals).sort((a, b) => b[1] - a[1]).slice(0, 10),
+    }}
+    aseo={{
+      budgetWeekId: aseoBudget?.id,
+      budgetAmount: aseoBudgetAmount,
+      totalSpent: aseoTotalSpent,
+      expenses: serializeExpenses(aseoExpenses),
+      categories: ['Supermercado', 'Ferretería', 'Online', 'Otro'],
+      dailySpending: aseoDailySpending,
+      categoryTotals: Object.entries(aseoCategoryTotals).sort((a, b) => b[1] - a[1]),
+      productTotals: Object.entries(aseoProductTotals).sort((a, b) => b[1] - a[1]).slice(0, 10),
+    }}
+    isReadOnly={isReadOnly}
   />
 </Layout>

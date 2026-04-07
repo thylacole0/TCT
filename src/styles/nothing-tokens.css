@@ -145,14 +145,37 @@ html, body {
 .text-warning { color: var(--warning); }
 
 /* --- DOT GRID MOTIF --- */
-.dot-grid {
-  background-image: radial-gradient(circle, var(--border-visible) 1px, transparent 1px);
-  background-size: 16px 16px;
+.dot-grid,
+.dot-grid-subtle {
+  position: relative;
+  overflow: hidden;
 }
 
-.dot-grid-subtle {
-  background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
-  background-size: 12px 12px;
+.dot-grid::before,
+.dot-grid-subtle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dot-grid > *,
+.dot-grid-subtle > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dot-grid::before {
+  background-image: radial-gradient(circle, var(--text-disabled) 1px, transparent 1px);
+  background-size: 16px 16px;
+  opacity: 0.55;
+}
+
+.dot-grid-subtle::before {
+  background-image: radial-gradient(circle, var(--text-disabled) 1px, transparent 1px);
+  background-size: 14px 14px;
+  opacity: 0.35;
 }
 
 /* --- SCROLLBAR --- */

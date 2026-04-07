@@ -5,23 +5,23 @@ import SegmentedBar from '../../components/SegmentedBar.astro';
 import Card from '../../components/Card.astro';
 import Button from '../../components/Button.astro';
 import { createAuthClient } from '../../lib/supabase';
+import { nowChile, monthBoundsChile } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 
 const supabase = createAuthClient(accessToken);
 
-// Current month
-const now = new Date();
-const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+// Current month (Chile timezone)
+const now = nowChile();
+const { monthStart, monthEnd } = monthBoundsChile();
 const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
 
 // Parallel fetch
 const [profilesRes, choreLogsRes, categoriesRes] = await Promise.all([
   supabase.from('profiles').select('*'),
   supabase.from('chore_logs')
-    .select('*, chores(name, category_id, chore_categories(name)), profiles(display_name)')
+    .select('*, chores(name, category_id, chore_categories(name)), profiles(display_name, avatar_url)')
     .gte('completed_at', monthStart)
     .lte('completed_at', monthEnd)
     .order('completed_at', { ascending: false }),
@@ -71,6 +71,13 @@ const totalMax = Math.max(...Object.values(scores), 1);
           const score = scores[p.id] || 0;
           return (
             <div class="score-card">
+              <div class="score-card-header">
+                {(p as any).avatar_url ? (
+                  <img src={(p as any).avatar_url} alt="" width="24" height="24" class="mini-avatar score-avatar" />
+                ) : (
+                  <span class="mini-avatar-letter score-avatar">{(p.display_name || '?')[0]}</span>
+                )}
+              </div>
               <HeroNumber 
                 value={score} 
                 unit="PTS"
@@ -129,7 +136,14 @@ const totalMax = Math.max(...Object.values(scores), 1);
             <div class="history-row">
               <div class="history-info">
                 <span class="history-name">{log.chores?.name}</span>
-                <span class="caption">{log.profiles?.display_name} · {timeStr}</span>
+                <span class="caption history-meta">
+                  {log.profiles?.avatar_url ? (
+                    <img src={log.profiles.avatar_url} alt="" width="14" height="14" class="mini-avatar" />
+                  ) : (
+                    <span class="mini-avatar-letter">{(log.profiles?.display_name || '?')[0]}</span>
+                  )}
+                  {log.profiles?.display_name} · {timeStr}
+                </span>
               </div>
               <span class="history-points">+{log.points_earned}</span>
             </div>
@@ -320,5 +334,48 @@ const totalMax = Math.max(...Object.values(scores), 1);
     .scores-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* Avatars */
+  .mini-avatar {
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .mini-avatar-letter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 8px;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  .score-avatar {
+    width: 24px;
+    height: 24px;
+  }
+
+  .score-avatar.mini-avatar-letter {
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
+  }
+
+  .score-card-header {
+    display: flex;
+    align-items: center;
+  }
+
+  .history-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 </style>

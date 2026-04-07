@@ -6,6 +6,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (!user || !locals.accessToken) {
     return new Response("Unauthorized", { status: 401 });
   }
+  if (locals.userRole === 'admin') {
+    return new Response("Admin is read-only", { status: 403 });
+  }
 
   const supabase = createAuthClient(locals.accessToken);
 

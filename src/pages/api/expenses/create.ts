@@ -1,10 +1,14 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
+import { todayChile } from "../../../lib/dates";
 
 export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
   if (!user || !locals.accessToken) {
     return new Response("Unauthorized", { status: 401 });
+  }
+  if (locals.userRole === 'admin') {
+    return new Response("Admin is read-only", { status: 403 });
   }
 
   const supabase = createAuthClient(locals.accessToken);
@@ -13,7 +17,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const amount = formData.get("amount")?.toString();
   const description = formData.get("description")?.toString();
   const category = formData.get("category")?.toString() || "Supermercado";
-  const expenseDate = formData.get("expense_date")?.toString() || new Date().toISOString().split('T')[0];
+  const expenseDate = formData.get("expense_date")?.toString() || todayChile();
   const budgetWeekId = formData.get("budget_week_id")?.toString();
 
   if (!amount || !description) {

@@ -23,9 +23,13 @@ export function createServerClient(request: Request, cookies: AstroCookies) {
           return parseCookieHeader(request.headers.get("Cookie") ?? "");
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookies.set(name, value, options)
-          );
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookies.set(name, value, options)
+            );
+          } catch {
+            // Ignore: async onAuthStateChange may fire after response is sent
+          }
         },
       },
     },

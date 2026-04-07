@@ -1,16 +1,26 @@
 ---
 interface Props {
   currentPath: string;
+  currentSearch?: string;
 }
 
-const { currentPath } = Astro.props;
+const { currentPath, currentSearch = '' } = Astro.props;
 
 const navItems = [
-  { label: 'DASHBOARD', href: '/' },
-  { label: 'LIMPIEZA', href: '/limpieza' },
-  { label: 'FINANZAS', href: '/finanzas' },
-  { label: 'CONFIG', href: '/config' },
+  { label: 'DASHBOARD', href: '/', path: '/', match: 'exact' },
+  { label: 'LIMPIEZA', href: '/limpieza', path: '/limpieza', match: 'prefix' },
+  { label: 'FINANZAS', href: '/finanzas', path: '/finanzas', match: 'prefix' },
+  { label: 'COMIDAS', href: '/comidas', path: '/comidas', match: 'prefix' },
+  { label: 'CONFIG', href: '/config', path: '/config', match: 'prefix' },
 ];
+
+function isItemActive(item: typeof navItems[0]) {
+  if (item.match === 'exact') {
+    return currentPath === item.path;
+  }
+  // prefix
+  return currentPath === item.path || currentPath.startsWith(item.path + '/');
+}
 ---
 
 <nav class="nav">
@@ -21,8 +31,7 @@ const navItems = [
     </div>
     <div class="nav-links">
       {navItems.map((item) => {
-        const isActive = currentPath === item.href || 
-          (item.href !== '/' && currentPath.startsWith(item.href));
+        const isActive = isItemActive(item);
         return (
           <a 
             href={item.href} 
@@ -45,8 +54,7 @@ const navItems = [
 <!-- Mobile bottom nav -->
 <nav class="nav-mobile">
   {navItems.map((item) => {
-    const isActive = currentPath === item.href || 
-      (item.href !== '/' && currentPath.startsWith(item.href));
+    const isActive = isItemActive(item);
     return (
       <a 
         href={item.href} 
@@ -90,7 +98,8 @@ const navItems = [
     z-index: 100;
     background: var(--black);
     border-bottom: 1px solid var(--border);
-    height: 56px;
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   .nav-inner {
@@ -191,20 +200,29 @@ const navItems = [
     z-index: 100;
     background: var(--black);
     border-top: 1px solid var(--border);
-    height: 64px;
-    padding: 0 var(--space-sm);
-    justify-content: space-around;
-    align-items: center;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    justify-content: stretch;
+    align-items: stretch;
   }
 
   .nav-mobile-link {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: var(--space-xs);
     text-decoration: none;
-    padding: var(--space-sm) var(--space-sm);
-    min-width: 60px;
+    flex: 1;
+    min-height: 64px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .nav-mobile-link:active {
+    background: var(--surface-raised);
   }
 
   .nav-mobile-label {
@@ -214,6 +232,7 @@ const navItems = [
     text-transform: uppercase;
     color: var(--text-disabled);
     transition: color var(--duration-micro) var(--ease-out);
+    pointer-events: none;
   }
 
   .nav-mobile-link.active .nav-mobile-label {
@@ -225,11 +244,12 @@ const navItems = [
     height: 4px;
     background: var(--text-display);
     border-radius: 50%;
+    pointer-events: none;
   }
 
   @media (max-width: 768px) {
     .nav {
-      height: 48px;
+      height: calc(48px + env(safe-area-inset-top, 0px));
     }
     .nav-links {
       display: none;

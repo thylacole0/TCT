@@ -6,6 +6,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (!user || !locals.accessToken) {
     return new Response("Unauthorized", { status: 401 });
   }
+  if (locals.userRole === 'admin') {
+    return new Response("Admin is read-only", { status: 403 });
+  }
 
   const supabase = createAuthClient(locals.accessToken);
 
@@ -59,13 +62,13 @@ export const GET: APIRoute = async ({ url, locals }) => {
     return new Response("week_start required", { status: 400 });
   }
 
-  const weekEnd = new Date(weekStart);
+  const weekEnd = new Date(weekStart + "T12:00:00");
   weekEnd.setDate(weekEnd.getDate() + 6);
   const weekEndStr = weekEnd.toISOString().split("T")[0];
 
   const { data, error } = await supabase
     .from("meal_plans")
-    .select("*, meal_types(name, sort_order), profiles(display_name)")
+    .select("*, meal_types(name, sort_order), profiles(display_name, avatar_url)")
     .gte("meal_date", weekStart)
     .lte("meal_date", weekEndStr)
     .order("meal_date")
@@ -85,6 +88,9 @@ export const DELETE: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
   if (!user || !locals.accessToken) {
     return new Response("Unauthorized", { status: 401 });
+  }
+  if (locals.userRole === 'admin') {
+    return new Response("Admin is read-only", { status: 403 });
   }
 
   const supabase = createAuthClient(locals.accessToken);

@@ -14,5 +14,6 @@ declare namespace App {
     session: import("@supabase/supabase-js").Session | null;
     user: import("@supabase/supabase-js").User | null;
     accessToken: string | null;
+    userRole: 'member' | 'admin' | null;
   }
 }

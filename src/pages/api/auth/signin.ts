@@ -1,9 +1,9 @@
 import type { APIRoute } from "astro";
+import { supabase } from "../../../lib/supabase";
 import { createServerClient } from "../../../lib/supabase";
 import type { Provider } from "@supabase/supabase-js";
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
-  const supabase = createServerClient(request, cookies);
   const formData = await request.formData();
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
@@ -12,7 +12,9 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const validProviders = ["google"];
 
   if (provider && validProviders.includes(provider)) {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    // OAuth needs SSR client for PKCE code verifier cookie
+    const supa = createServerClient(request, cookies);
+    const { data, error } = await supa.auth.signInWithOAuth({
       provider: provider as Provider,
       options: {
         redirectTo: `${new URL(request.url).origin}/api/auth/callback`,
@@ -30,6 +32,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     return new Response("Email and password are required", { status: 400 });
   }
 
+  // Password auth: use basic client (no PKCE needed)
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,

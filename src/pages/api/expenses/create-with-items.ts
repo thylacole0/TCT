@@ -1,10 +1,14 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
+import { todayChile } from "../../../lib/dates";
 
 export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
   if (!user || !locals.accessToken) {
     return new Response("Unauthorized", { status: 401 });
+  }
+  if (locals.userRole === 'admin') {
+    return new Response("Admin is read-only", { status: 403 });
   }
 
   const supabase = createAuthClient(locals.accessToken);
@@ -32,7 +36,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
         amount: total,
         description: `${items.length} producto${items.length > 1 ? "s" : ""}`,
         category: category || "Supermercado",
-        expense_date: expense_date || new Date().toISOString().split("T")[0],
+        expense_date: expense_date || todayChile(),
       })
       .select("id")
       .single();

@@ -1,5 +1,113 @@
 /* islands.css - Estilos para interactividad de Preact islands (Nothing Design) */
 
+/* DASHBOARD ACTIVITY ISLAND */
+.da-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.da-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-visible);
+}
+
+.da-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: var(--space-sm) var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-disabled);
+  cursor: pointer;
+  transition: color var(--duration-micro) var(--ease-out),
+              border-color var(--duration-micro) var(--ease-out);
+  text-transform: uppercase;
+}
+
+.da-tab:hover {
+  color: var(--text-primary);
+}
+
+.da-tab-active {
+  color: var(--text-display);
+  border-bottom-color: var(--text-display);
+}
+
+.da-content {
+  padding-top: var(--space-sm);
+}
+
+.da-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.da-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.da-row:last-child {
+  border-bottom: none;
+}
+
+.da-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+  flex: 1;
+}
+
+.da-row-name {
+  font-family: var(--font-body);
+  font-size: var(--body-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.da-row-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-disabled);
+  letter-spacing: 0.04em;
+}
+
+.da-row-pts {
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  font-weight: 700;
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.da-row-expense {
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.da-empty {
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  color: var(--text-disabled);
+  text-align: center;
+  padding: var(--space-lg) 0;
+  letter-spacing: 0.04em;
+}
+
 /* EXPENSE FORM */
 .ef-form {
   display: flex;
@@ -20,6 +128,21 @@
   align-items: center;
   padding-bottom: var(--space-xs);
   border-bottom: 1px solid var(--border-visible);
+}
+
+.ef-section-title {
+  font-family: var(--font-mono);
+  font-size: var(--body-md);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-display);
+}
+
+.ef-products-header {
+  border-bottom: 2px solid var(--text-primary);
+  padding-bottom: var(--space-sm);
+  margin-bottom: var(--space-sm);
 }
 
 .ef-label {
@@ -232,15 +355,20 @@
   flex-direction: column;
   gap: 0;
   width: 100%;
+  margin-top: calc(-1 * var(--space-xl));
 }
 
 .fh-tabs {
   display: flex;
   border-bottom: 2px solid var(--text-primary);
   position: sticky;
-  top: 60px;
+  top: 56px;
   z-index: 10;
   background: var(--black);
+  margin-left: calc(-1 * var(--space-lg));
+  margin-right: calc(-1 * var(--space-lg));
+  padding-left: var(--space-lg);
+  padding-right: var(--space-lg);
 }
 
 .fh-tab {
@@ -267,6 +395,198 @@
 .fh-tab-active {
   color: var(--text-display);
   border-bottom-color: var(--text-display);
+}
+
+/* Sub-toggle (COMIDA / ASEO) */
+.fh-subtabs {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-lg);
+}
+
+.fh-subtab {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-micro) var(--ease-out);
+  text-transform: uppercase;
+}
+
+.fh-subtab:hover {
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.fh-subtab-active {
+  color: var(--text-display);
+  border-color: var(--text-display);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Budget Island: Summary / Comparison view */
+.bi-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.bi-card {
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.bi-card-spent {
+  font-family: var(--font-display);
+  font-size: var(--display-sm);
+  line-height: 1;
+}
+
+.bi-card-remaining {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-xs);
+}
+
+.bi-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: var(--space-md) 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-lg);
+  gap: var(--space-md);
+}
+
+.bi-total-pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+}
+
+.bi-stacked-track {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bi-fill-aseo {
+  background: var(--accent) !important;
+}
+
+.bi-legend-row {
+  display: flex;
+  gap: var(--space-lg);
+  justify-content: center;
+  margin-top: var(--space-sm);
+}
+
+.bi-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.bi-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.bi-expense-section {
+  margin-top: var(--space-xxl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ─── Filter Tabs (TODOS / COMIDA / ASEO) ─── */
+.bi-filter-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-sm);
+}
+
+.bi-filter-tab {
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-disabled);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  transition: color var(--duration-micro) var(--ease-out),
+              border-color var(--duration-micro) var(--ease-out);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  position: relative;
+}
+
+.bi-filter-tab:hover {
+  color: var(--text-primary);
+}
+
+.bi-filter-tab-active {
+  color: var(--text-display);
+  border-bottom-color: var(--text-display);
+}
+
+.bi-filter-count {
+  font-size: 9px;
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Expense Type Tags ─── */
+.bi-type-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  padding: 0 4px;
+  line-height: 16px;
+  color: var(--text-disabled);
+}
+
+.bi-type-comida {
+  color: var(--text-secondary);
+}
+
+.bi-type-aseo {
+  color: var(--accent);
+}
+
+@media (max-width: 600px) {
+  .bi-compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bi-total-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bi-card-spent {
+    font-size: var(--heading);
+  }
 }
 
 .fh-panel-wrapper {
@@ -338,13 +658,21 @@
 
 .fh-bar-track {
   width: 100%;
-  height: 8px;
-  background: var(--border);
+  display: flex;
+  gap: 3px;
+  align-items: center;
 }
 
-.fh-bar-fill {
-  height: 100%;
-  transition: width var(--duration-slow) var(--ease-out);
+.fh-bar-seg {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 1px;
+  transition: background var(--duration-micro) var(--ease-out);
+}
+
+.fh-bar-seg-on {
+  background: var(--text-display);
 }
 
 .fh-remaining-row {
@@ -486,6 +814,13 @@
   color: var(--text-secondary);
 }
 
+.fh-daily-val {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
 /* Charts grid */
 .fh-charts-grid {
   display: grid;
@@ -540,6 +875,14 @@
   white-space: nowrap;
 }
 
+.fh-pie-legend-pct {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-disabled);
+  min-width: 28px;
+  text-align: right;
+}
+
 .fh-pie-legend-val {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -570,21 +913,65 @@
 .fh-expense-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: var(--space-sm) 0;
+  align-items: flex-start;
+  padding: var(--space-md) 0;
   border-bottom: 1px solid var(--border);
+  gap: var(--space-md);
 }
 
 .fh-expense-info {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2xs);
+  gap: var(--space-xs);
+  min-width: 0;
+  flex: 1;
 }
 
 .fh-expense-desc {
   font-family: var(--font-body);
   font-size: var(--body-sm);
   color: var(--text-primary);
+}
+
+.fh-expense-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.fh-expense-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.fh-expense-item-name {
+  font-family: var(--font-body);
+  font-size: var(--body-sm);
+  color: var(--text-primary);
+}
+
+.fh-expense-item-price {
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.fh-expense-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2xs);
+  flex-shrink: 0;
+}
+
+.fh-expense-total-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--text-disabled);
 }
 
 .fh-expense-amount {
@@ -633,9 +1020,22 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2xl);
   }
+  .fh-split-grid.fh-split-readonly {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
+  .fh-root {
+    margin-top: calc(-1 * var(--space-lg));
+  }
+  .fh-tabs {
+    top: 48px;
+    margin-left: calc(-1 * var(--space-md));
+    margin-right: calc(-1 * var(--space-md));
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+  }
   .fh-hero-value {
     font-size: var(--heading);
   }
@@ -650,6 +1050,171 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2xl);
+}
+
+/* ─── BENTO GRID (Comidas de Hoy) — Nothing Style ─── */
+.bento-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.bento-date {
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.1em;
+  color: var(--text-disabled);
+  text-transform: uppercase;
+}
+
+.bento-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-family: var(--font-display);
+}
+
+.bento-counter-num {
+  font-size: var(--heading);
+  color: var(--text-display);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bento-counter-sep {
+  font-size: var(--body-sm);
+  color: var(--text-disabled);
+}
+
+.bento-counter-total {
+  font-size: var(--body-sm);
+  color: var(--text-disabled);
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.bento-grid .bento-card:first-child {
+  grid-column: 1 / -1;
+}
+
+.bento-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-compact);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  transition: border-color var(--duration-micro) var(--ease-out);
+}
+
+.bento-card:hover {
+  border-color: var(--border-visible);
+}
+
+.bento-card-active {
+  border-color: var(--text-display);
+  background: var(--surface-raised);
+  position: relative;
+  overflow: hidden;
+}
+
+.bento-card-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--text-disabled) 1px, transparent 1px);
+  background-size: 14px 14px;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bento-card-active > * {
+  position: relative;
+  z-index: 1;
+}
+
+.bento-card-empty .bento-meal-desc {
+  color: var(--text-disabled);
+}
+
+.bento-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bento-time-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--text-disabled);
+}
+
+.bento-card-active .bento-time-label {
+  color: var(--text-secondary);
+}
+
+.bento-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex: 1;
+}
+
+.bento-meal-type {
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+}
+
+.bento-card-active .bento-meal-type {
+  color: var(--text-primary);
+}
+
+.bento-meal-desc {
+  font-family: var(--font-body);
+  font-size: var(--body);
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.bento-card-active .bento-meal-desc {
+  font-size: var(--subheading);
+  color: var(--text-display);
+  font-weight: 500;
+}
+
+.bento-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+.bento-now-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--text-display);
+  background: transparent;
+  padding: 2px 8px;
+  border-radius: var(--radius-technical);
+  border: 1px solid var(--text-display);
+}
+
+@media (max-width: 400px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-grid .bento-card:first-child {
+    grid-column: 1;
+  }
 }
 
 /* MEAL PLANNER */
@@ -822,11 +1387,29 @@
 
 @media (max-width: 768px) {
   .mp-grid {
-    grid-template-columns: 50px repeat(3, 1fr);
+    grid-template-columns: 44px repeat(3, 1fr);
+    font-size: var(--caption);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .mp-header-cell {
-    font-size: 10px;
+    font-size: 9px;
     padding: var(--space-xs);
+    white-space: nowrap;
+  }
+  .mp-cell {
+    min-height: 60px;
+    padding: var(--space-xs);
+  }
+  .mp-cell-text {
+    font-size: 11px;
+    word-break: break-word;
+  }
+  .mp-day-num {
+    font-size: var(--body);
+  }
+  .mp-day-name {
+    font-size: 9px;
   }
   .ef-item-row {
     flex-wrap: wrap;

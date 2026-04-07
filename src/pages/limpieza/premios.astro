@@ -3,16 +3,16 @@ import Layout from '../../layouts/Layout.astro';
 import HeroNumber from '../../components/HeroNumber.astro';
 import Card from '../../components/Card.astro';
 import { createAuthClient } from '../../lib/supabase';
+import { nowChile, monthBoundsChile } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 
 const supabase = createAuthClient(accessToken);
 
-// Current month
-const now = new Date();
-const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+// Current month (Chile timezone)
+const now = nowChile();
+const { monthStart, monthEnd } = monthBoundsChile();
 const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
 
 // Parallel fetch
@@ -24,7 +24,7 @@ const [profilesRes, choreLogsRes, rewardsRes, claimsRes] = await Promise.all([
     .lte('completed_at', monthEnd),
   supabase.from('rewards').select('*').eq('is_active', true).order('points_cost', { ascending: true }),
   supabase.from('reward_claims')
-    .select('*, rewards(name), profiles(display_name)')
+    .select('*, rewards(name), profiles(display_name, avatar_url)')
     .order('claimed_at', { ascending: false })
     .limit(10),
 ]);
@@ -128,7 +128,14 @@ const isTied = sortedScores.length > 1 && sortedScores[0][1] === sortedScores[1]
               <div class="claim-row">
                 <div class="claim-info">
                   <span class="claim-name">{claim.rewards?.name}</span>
-                  <span class="caption">{claim.profiles?.display_name} · {date}</span>
+                  <span class="caption" style="display: inline-flex; align-items: center; gap: 4px;">
+                    {claim.profiles?.avatar_url ? (
+                      <img src={claim.profiles.avatar_url} alt="" width="14" height="14" style="border-radius: 50%; object-fit: cover;" />
+                    ) : (
+                      <span style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); color: var(--text-secondary); font-size: 8px; font-family: var(--font-mono);">{(claim.profiles?.display_name || '?')[0]}</span>
+                    )}
+                    {claim.profiles?.display_name} · {date}
+                  </span>
                 </div>
               </div>
             );

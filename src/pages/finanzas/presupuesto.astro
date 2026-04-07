@@ -3,28 +3,31 @@ import Layout from '../../layouts/Layout.astro';
 import Input from '../../components/Input.astro';
 import Button from '../../components/Button.astro';
 import { createAuthClient } from '../../lib/supabase';
+import { getMondayChile, formatDateCL } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 
 const supabase = createAuthClient(accessToken);
 
-// Current week
-const today = new Date();
-const dayOfWeek = today.getDay();
-const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-const weekStart = new Date(today);
-weekStart.setDate(today.getDate() + mondayOffset);
-const weekStartStr = weekStart.toISOString().split('T')[0];
+// Budget type from query param (default: comida)
+const budgetType = Astro.url.searchParams.get('type') === 'aseo' ? 'aseo' : 'comida';
+const budgetLabel = budgetType === 'aseo' ? 'ASEO' : 'COMIDA';
+const backLink = budgetType === 'aseo' ? '/limpieza' : '/finanzas';
+
+// Current week (Chile timezone)
+const weekStart = getMondayChile();
+const weekStartStr = formatDateCL(weekStart);
 const weekEnd = new Date(weekStart);
 weekEnd.setDate(weekStart.getDate() + 6);
 const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
 
-// Get existing budget
+// Get existing budget for this type
 const { data: currentBudget } = await supabase
   .from('budget_weeks')
   .select('*')
   .eq('week_start', weekStartStr)
+  .eq('budget_type', budgetType)
   .single();
 
 const existingAmount = currentBudget ? Number(currentBudget.budget_amount) : '';
@@ -44,27 +47,28 @@ if (Astro.request.method === 'POST') {
         {
           week_start: weekStartStr,
           budget_amount: parseFloat(budgetAmount),
+          budget_type: budgetType,
           created_by: user.id,
         },
-        { onConflict: 'week_start' }
+        { onConflict: 'week_start,budget_type' }
       );
 
     if (error) {
       errorMsg = error.message;
     } else {
-      return Astro.redirect('/finanzas');
+      return Astro.redirect(backLink);
     }
   }
 }
 ---
 
-<Layout title="TCT — Presupuesto Semanal" currentPath="/finanzas">
+<Layout title={`TCT — Presupuesto ${budgetLabel}`} currentPath={backLink}>
   <div class="presupuesto-page">
     <section class="header-section">
-      <a href="/finanzas" class="back-link">← FINANZAS</a>
+      <a href={backLink} class="back-link">← {budgetLabel === 'ASEO' ? 'LIMPIEZA' : 'FINANZAS'}</a>
     </section>
 
-    <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO</h2>
+    <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO {budgetLabel}</h2>
     <span class="label">{weekLabel}</span>
 
     {errorMsg && (
@@ -82,7 +86,7 @@ if (Astro.request.method === 'POST') {
       />
 
       <p class="hint-text">
-        Este monto será el presupuesto de comida para la semana {weekLabel.toLowerCase()}.
+        Este monto será el presupuesto de {budgetLabel.toLowerCase()} para la semana {weekLabel.toLowerCase()}.
       </p>
 
       <div class="form-actions">

@@ -1,0 +1,36 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ComidasIsland from '../../components/islands/ComidasIsland';
+import { createAuthClient } from '../../lib/supabase';
+import { todayChile } from '../../lib/dates';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+const todayStr = todayChile();
+
+const [todaysMealsRes, mealTypesRes] = await Promise.all([
+  supabase.from('meal_plans').select('*, meal_types(name)').eq('meal_date', todayStr),
+  supabase.from('meal_types').select('*').order('sort_order'),
+]);
+
+const mealTypes = mealTypesRes.data || [];
+const todaysMeals = todaysMealsRes.data;
+
+const mealsMap: Record<string, string> = {};
+todaysMeals?.forEach(m => {
+  mealsMap[m.meal_types?.name] = m.description;
+});
+
+const isReadOnly = Astro.locals.userRole === 'admin';
+---
+
+<Layout title="TCT — Comidas" currentPath="/comidas">
+  <ComidasIsland
+    client:load
+    mealTypes={mealTypes}
+    todaysMeals={mealsMap}
+    isReadOnly={isReadOnly}
+  />
+</Layout>

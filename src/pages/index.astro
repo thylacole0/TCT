@@ -1,208 +1,309 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import HeroNumber from '../components/HeroNumber.astro';
-import SegmentedBar from '../components/SegmentedBar.astro';
-import StatRow from '../components/StatRow.astro';
-import Card from '../components/Card.astro';
 import { createAuthClient } from '../lib/supabase';
+import { nowChile, todayChile, getMondayChile, formatDateCL, monthBoundsChile, hourChile } from '../lib/dates';
+import DashboardActivity from '../components/islands/DashboardActivity';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 
 const supabase = createAuthClient(accessToken);
 
-// Current month boundaries
-const now = new Date();
-const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+// Current month boundaries (Chile timezone)
+const now = nowChile();
+const { monthStart, monthEnd } = monthBoundsChile();
 const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
 
-// Current week budget
-const today = new Date();
-const dayOfWeek = today.getDay();
-const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-const weekStart = new Date(today);
-weekStart.setDate(today.getDate() + mondayOffset);
-const weekStartStr = weekStart.toISOString().split('T')[0];
+// Current week budget (Chile timezone)
+const weekStart = getMondayChile();
+const weekEnd = new Date(weekStart);
+weekEnd.setDate(weekStart.getDate() + 6);
+const weekStartStr = formatDateCL(weekStart);
+const todayStr = todayChile();
+const hour = hourChile();
+const currentMeal = hour < 10 ? 'Desayuno' : hour < 16 ? 'Almuerzo' : 'Once';
+const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
 
 // Parallel fetch all independent queries
-const [profilesRes, choreLogsRes, budgetRes, recentExpensesRes] = await Promise.all([
+const [profilesRes, choreLogsRes, budgetRes, recentExpensesRes, todaysMealsRes, mealTypesRes] = await Promise.all([
   supabase.from('profiles').select('*'),
   supabase.from('chore_logs')
-    .select('*, chores(name, points), profiles(display_name)')
+    .select('*, chores(name, points), profiles(display_name, avatar_url)')
     .gte('completed_at', monthStart)
     .lte('completed_at', monthEnd)
     .order('completed_at', { ascending: false }),
-  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).single(),
+  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'comida').single(),
   supabase.from('expenses')
-    .select('*, profiles(display_name)')
+    .select('*, profiles(display_name, avatar_url)')
     .order('created_at', { ascending: false })
-    .limit(5),
+    .limit(8),
+  supabase.from('meal_plans').select('*, meal_types(name)').eq('meal_date', todayStr),
+  supabase.from('meal_types').select('*').order('sort_order'),
 ]);
 
 const profiles = profilesRes.data;
 const choreLogs = choreLogsRes.data;
 const currentBudget = budgetRes.data;
-const recentExpenses = recentExpensesRes.data;
+const recentExpenses = recentExpensesRes.data || [];
+const mealTypes = mealTypesRes.data || [];
 
-// Calculate scores per user
+// Fetch expense items for recent expenses
+const expenseIds = recentExpenses.map((e: any) => e.id);
+const { data: expenseItems } = expenseIds.length > 0
+  ? await supabase.from('expense_items').select('*').in('expense_id', expenseIds)
+  : { data: [] };
+
+// Today's meals map
+const todaysMeals: Record<string, string> = {};
+todaysMealsRes.data?.forEach((m: any) => {
+  todaysMeals[m.meal_types?.name] = m.description;
+});
+
+// Meal labels
+const MEAL_LABELS: Record<string, string> = { Desayuno: 'AM', Almuerzo: 'PM', Once: 'EVE' };
+
+// Calculate scores per user (exclude admin role)
 const scores: Record<string, number> = {};
-profiles?.forEach(p => { scores[p.id] = 0; });
+profiles?.filter(p => (p as any).role !== 'admin').forEach(p => { scores[p.id] = 0; });
 choreLogs?.forEach(log => {
-  scores[log.user_id] = (scores[log.user_id] || 0) + log.points_earned;
+  if (scores[log.user_id] !== undefined) {
+    scores[log.user_id] = (scores[log.user_id] || 0) + log.points_earned;
+  }
 });
 
 const totalPoints = Object.values(scores).reduce((a, b) => a + b, 0);
-const myScore = scores[user.id] || 0;
 
 // Week expenses (depends on budget result)
 let weekExpenses = 0;
+let weekExpensesList: any[] = [];
 if (currentBudget) {
   const { data: expenses } = await supabase
     .from('expenses')
-    .select('amount')
+    .select('amount, expense_date')
     .eq('budget_week_id', currentBudget.id);
   weekExpenses = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+  weekExpensesList = expenses || [];
 }
 
 const budgetAmount = currentBudget ? Number(currentBudget.budget_amount) : 0;
+const budgetPct = budgetAmount > 0 ? Math.min((weekExpenses / budgetAmount) * 100, 100) : 0;
+const budgetOverflow = weekExpenses > budgetAmount;
+const remaining = budgetAmount - weekExpenses;
+const dailyAvg = budgetAmount > 0 ? Math.round(budgetAmount / 7) : 0;
+
+// Daily spending for sparkline
+const dayNames = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
+const dailySpending: Record<string, number> = {};
+dayNames.forEach(d => { dailySpending[d] = 0; });
+weekExpensesList.forEach(e => {
+  const d = new Date(e.expense_date + 'T12:00:00');
+  const dow = d.getDay();
+  const dayIdx = dow === 0 ? 6 : dow - 1;
+  dailySpending[dayNames[dayIdx]] = (dailySpending[dayNames[dayIdx]] || 0) + Number(e.amount);
+});
+const maxDaily = Math.max(...Object.values(dailySpending), 1);
 
 // Format CLP
 const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
 
-// Recent activity (last 5)
-const recentLogs = choreLogs?.slice(0, 5) || [];
+// Greeting based on time
+const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+const myProfile = profiles?.find(p => p.id === user.id) as any;
+const firstName = myProfile?.display_name?.split(' ')[0] || '';
+const myAvatar = myProfile?.avatar_url || '';
+
+// Pre-compute segmented bar
+const budgetSegs = Array.from({ length: 20 }, (_, i) => {
+  const segPct = ((i + 1) / 20) * 100;
+  const filled = segPct <= budgetPct;
+  const color = budgetOverflow ? 'var(--accent)' : budgetPct > 75 ? 'var(--warning)' : 'var(--text-display)';
+  return { filled, color };
+});
+
+// Scores comparison bar
+const memberProfiles = profiles?.filter(p => (p as any).role !== 'admin') || [];
+const compSegs: Array<{ color: string; isGap?: boolean }> = [];
+memberProfiles.forEach((p, i) => {
+  const pct = totalPoints > 0 ? (scores[p.id] / totalPoints) * 100 : 50;
+  const segCount = Math.max(1, Math.round(pct / 5));
+  const color = i === 0 ? 'var(--text-display)' : 'var(--text-disabled)';
+  for (let s = 0; s < segCount; s++) compSegs.push({ color });
+  if (i < memberProfiles.length - 1) compSegs.push({ color: '', isGap: true });
+});
+
+// Today's meal filled count
+const filledMeals = mealTypes.filter(mt => todaysMeals[mt.name]).length;
+
+// Serialize activity for island
+const choreLogsSerialized = (choreLogs?.slice(0, 8) || []).map((log: any) => ({
+  choreName: log.chores?.name || '',
+  userName: log.profiles?.display_name || '',
+  userAvatar: log.profiles?.avatar_url || '',
+  points: log.points_earned,
+  date: new Date(log.completed_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }),
+}));
+
+const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
+  description: exp.description,
+  userName: exp.profiles?.display_name || '',
+  userAvatar: exp.profiles?.avatar_url || '',
+  amount: Number(exp.amount),
+  date: new Date(exp.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }),
+  items: (expenseItems || [])
+    .filter((item: any) => item.expense_id === exp.id)
+    .map((item: any) => ({ name: item.name, quantity: item.quantity, unit_price: Number(item.unit_price) })),
+}));
 ---
 
 <Layout title="TCT — Dashboard" currentPath="/">
   <div class="dashboard">
-    <!-- HERO: Month scores -->
-    <section class="hero-section">
-      <div class="hero-meta">
-        <span class="label">{monthLabel}</span>
-      </div>
-      <div class="hero-scores">
-        {profiles?.map((p) => (
-          <div class="hero-player">
-            <HeroNumber 
-              value={scores[p.id] || 0} 
-              unit="PTS"
-              label={p.display_name}
-              size={p.id === user.id ? 'xl' : 'lg'}
-              color={p.id === user.id ? 'var(--text-display)' : 'var(--text-secondary)'}
-            />
-          </div>
-        ))}
-      </div>
-    </section>
-
-    <!-- SCORE COMPARISON BAR -->
-    <section class="comparison-section">
-      <div class="comparison-bar-label label">COMPARACIÓN DEL MES</div>
-      <div class="comparison-bar">
-        {profiles?.map((p, i) => {
-          const pct = totalPoints > 0 ? (scores[p.id] / totalPoints) * 100 : 50;
-          return (
-            <div 
-              class="comparison-segment"
-              style={`width: ${pct}%; background: ${i === 0 ? 'var(--text-display)' : 'var(--text-disabled)'};`}
-            >
-              <span class="comparison-name">{(p as any).display_name.split(' ')[0]}</span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-
-    <!-- BUDGET WIDGET -->
-    <section class="budget-section">
-      <Card padding="lg">
-        <div class="budget-header">
-          <span class="label">PRESUPUESTO SEMANAL — COMIDA</span>
-          <a href="/finanzas" class="view-link">VER TODO →</a>
-        </div>
-        {budgetAmount > 0 ? (
-          <div class="budget-content">
-            <div class="budget-numbers">
-              <span class="budget-spent" style={weekExpenses > budgetAmount ? 'color: var(--accent);' : ''}>
-                {formatCLP(weekExpenses)}
-              </span>
-              <span class="budget-total">/ {formatCLP(budgetAmount)}</span>
-            </div>
-            <SegmentedBar 
-              value={weekExpenses} 
-              max={budgetAmount} 
-              segments={15}
-              showValue={false}
-              size="standard"
-            />
-            <div class="budget-remaining">
-              <span class="label">RESTANTE</span>
-              <span class="budget-remain-value" style={budgetAmount - weekExpenses < 0 ? 'color: var(--accent);' : 'color: var(--success);'}>
-                {formatCLP(budgetAmount - weekExpenses)}
-              </span>
-            </div>
-          </div>
+    <!-- GREETING -->
+    <div class="dash-greeting">
+      <div class="dash-greeting-left">
+        {myAvatar ? (
+          <img src={myAvatar} alt="" width="32" height="32" class="dash-greeting-avatar" />
         ) : (
-          <div class="budget-empty">
-            <p class="text-disabled">[SIN PRESUPUESTO ESTA SEMANA]</p>
-            <a href="/finanzas/presupuesto" class="set-budget-link">ESTABLECER PRESUPUESTO</a>
-          </div>
+          <span class="dash-greeting-avatar-letter">{(firstName || '?')[0]}</span>
         )}
-      </Card>
-    </section>
+        <div class="dash-greeting-text-wrap">
+          <span class="dash-greeting-text">{greeting}, {firstName}</span>
+          <span class="dash-greeting-date">{now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}</span>
+        </div>
+      </div>
+    </div>
 
-    <!-- RECENT ACTIVITY -->
-    <section class="activity-section">
-      <div class="section-header">
-        <span class="label">ACTIVIDAD RECIENTE</span>
+    <!-- BUDGET HERO -->
+    <div class="dash-card dash-card-budget dot-grid-subtle">
+      <div class="dash-card-header">
+        <div class="dash-card-label">PRESUPUESTO SEMANAL</div>
+        <span class="dash-week-label">{weekLabel}</span>
       </div>
-      <div class="activity-list">
-        {recentLogs.map((log: any) => {
-          const time = new Date(log.completed_at);
-          const timeStr = time.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
-          return (
-            <div class="activity-row">
-              <div class="activity-info">
-                <span class="activity-name">{log.chores?.name}</span>
-                <span class="caption">{log.profiles?.display_name} · {timeStr}</span>
+      {budgetAmount > 0 ? (
+        <>
+          <div class="dash-budget-hero">
+            <div class="dash-budget-spent">
+              <span class="dash-budget-amount" style={budgetOverflow ? 'color: var(--accent);' : ''}>{formatCLP(weekExpenses)}</span>
+              <span class="dash-budget-of">DE {formatCLP(budgetAmount)}</span>
+            </div>
+            <div class="dash-budget-stats">
+              <div class="dash-stat">
+                <span class="dash-stat-label">RESTANTE</span>
+                <span class="dash-stat-value" style={remaining < 0 ? 'color: var(--accent);' : 'color: var(--success);'}>{formatCLP(remaining)}</span>
               </div>
-              <span class="activity-points">+{log.points_earned}</span>
+              <div class="dash-stat">
+                <span class="dash-stat-label">DIARIO AVG</span>
+                <span class="dash-stat-value">{formatCLP(dailyAvg)}</span>
+              </div>
+            </div>
+          </div>
+          <div class="dash-budget-bar">
+            {budgetSegs.map((seg) =>
+              <div class={`dash-bar-seg ${seg.filled ? 'dash-bar-seg-on' : ''}`} style={seg.filled ? `background: ${seg.color};` : ''} />
+            )}
+          </div>
+          <!-- Daily sparkline -->
+          <div class="dash-sparkline">
+            {dayNames.map(day => {
+              const val = dailySpending[day];
+              const pct = Math.max(4, (val / maxDaily) * 100);
+              const isToday = dayNames[now.getDay() === 0 ? 6 : now.getDay() - 1] === day;
+              return (
+                <div class={`dash-spark-col ${isToday ? 'dash-spark-today' : ''}`}>
+                  {val > 0 ? <span class="dash-spark-val">{Math.round(val / 1000)}k</span> : <span class="dash-spark-val-empty" />}
+                  <div class="dash-spark-bar-wrap">
+                    <div class="dash-spark-bar" style={`height: ${pct}%;`} />
+                  </div>
+                  <span class="dash-spark-label">{day}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div class="dash-empty-msg">[SIN PRESUPUESTO CONFIGURADO]</div>
+      )}
+      <a href="/finanzas" class="dash-card-link">VER FINANZAS →</a>
+    </div>
+
+    <!-- TODAY'S MEALS (bento row) -->
+    <div class="dash-card dash-card-meals">
+      <div class="dash-card-header">
+        <div class="dash-card-label">COMIDAS DE HOY</div>
+        <span class="dash-meal-count">{filledMeals}/{mealTypes.length}</span>
+      </div>
+      <div class="dash-meals-grid">
+        {mealTypes.map(mt => {
+          const meal = todaysMeals[mt.name];
+          const isCurrent = mt.name === currentMeal;
+          return (
+            <div class={`dash-meal-slot ${isCurrent ? 'dash-meal-current' : ''} ${meal ? '' : 'dash-meal-empty'}`}>
+              <div class="dash-meal-slot-header">
+                <span class="dash-meal-slot-type">{mt.name.toUpperCase()}</span>
+                <span class="dash-meal-slot-tag">{MEAL_LABELS[mt.name]}</span>
+              </div>
+              <span class="dash-meal-slot-desc">{meal || 'Sin planificar'}</span>
             </div>
           );
         })}
-        {recentExpenses?.map((exp: any) => {
-          const time = new Date(exp.created_at);
-          const timeStr = time.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
+      </div>
+      <a href="/comidas" class="dash-card-link">PLANIFICAR →</a>
+    </div>
+
+    <!-- SCORES ROW -->
+    <div class="dash-card dash-card-scores">
+      <div class="dash-card-header">
+        <div class="dash-card-label">{monthLabel}</div>
+        <a href="/limpieza" class="dash-card-link">VER LIMPIEZA →</a>
+      </div>
+      <div class="dash-scores-row">
+        {memberProfiles.map((p) => {
+          const isMe = p.id === user.id;
+          const pts = scores[p.id] || 0;
           return (
-            <div class="activity-row">
-              <div class="activity-info">
-                <span class="activity-name">{exp.description}</span>
-                <span class="caption">{exp.profiles?.display_name} · {timeStr} · {exp.category}</span>
-              </div>
-              <span class="activity-expense">-{formatCLP(Number(exp.amount))}</span>
+            <div class={`dash-score-block ${isMe ? 'dash-score-mine' : ''}`}>
+              {(p as any).avatar_url ? (
+                <img src={(p as any).avatar_url} alt="" width="20" height="20" class="dash-score-avatar" />
+              ) : (
+                <span class="dash-score-avatar-letter">{((p as any).display_name || '?')[0]}</span>
+              )}
+              <span class="dash-score-value">{pts}</span>
+              <span class="dash-score-unit">PTS</span>
+              <span class="dash-score-name">{(p as any).display_name.split(' ')[0]}</span>
             </div>
           );
         })}
-        {(!recentLogs.length && !recentExpenses?.length) && (
-          <p class="text-disabled" style="padding: var(--space-xl) 0; text-align: center;">
-            [SIN ACTIVIDAD]
-          </p>
-        )}
       </div>
-    </section>
+      {totalPoints > 0 && (
+        <div class="dash-comparison-bar">
+          {compSegs.map((seg) =>
+            seg.isGap
+              ? <div class="dash-bar-gap" />
+              : <div class="dash-bar-seg dash-bar-seg-on" style={`background: ${seg.color};`} />
+          )}
+        </div>
+      )}
+    </div>
+
+    <!-- ACTIVITY ISLAND -->
+    <DashboardActivity
+      client:visible
+      choreLogs={choreLogsSerialized}
+      expenseLogs={expenseLogsSerialized}
+    />
 
     <!-- QUICK ACTIONS -->
-    <section class="quick-actions">
-      <a href="/limpieza" class="quick-action-btn">
-        <span class="qa-label">REGISTRAR TAREA</span>
-        <span class="qa-arrow">→</span>
+    <div class="dash-actions">
+      <a href="/limpieza" class="dash-card dash-card-action">
+        <span class="dash-action-icon">[check]</span>
+        <span class="dash-action-label">REGISTRAR TAREA</span>
+        <span class="dash-action-arrow">→</span>
       </a>
-      <a href="/finanzas/gasto" class="quick-action-btn">
-        <span class="qa-label">REGISTRAR GASTO</span>
-        <span class="qa-arrow">→</span>
+      <a href="/finanzas" class="dash-card dash-card-action">
+        <span class="dash-action-icon">[$]</span>
+        <span class="dash-action-label">REGISTRAR GASTO</span>
+        <span class="dash-action-arrow">→</span>
       </a>
-    </section>
+    </div>
   </div>
 </Layout>
 
@@ -210,235 +311,482 @@ const recentLogs = choreLogs?.slice(0, 5) || [];
   .dashboard {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2xl);
-  }
-
-  /* Hero Section */
-  .hero-section {
-    display: flex;
-    flex-direction: column;
     gap: var(--space-lg);
   }
 
-  .hero-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .hero-scores {
-    display: flex;
-    gap: var(--space-3xl);
-    align-items: flex-end;
-  }
-
-  .hero-player {
-    flex: 1;
-  }
-
-  /* Comparison Bar */
-  .comparison-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .comparison-bar {
-    display: flex;
-    height: 32px;
-    gap: 2px;
-    overflow: hidden;
-  }
-
-  .comparison-segment {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: width var(--duration-slow) var(--ease-out);
-    min-width: 40px;
-  }
-
-  .comparison-name {
-    font-family: var(--font-mono);
-    font-size: var(--label);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--black);
-    font-weight: 700;
-  }
-
-  /* Budget Section */
-  .budget-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-md);
-  }
-
-  .view-link {
-    font-family: var(--font-mono);
-    font-size: var(--label);
-    letter-spacing: 0.06em;
-    color: var(--text-disabled);
-    text-decoration: none;
-    transition: color var(--duration-micro) var(--ease-out);
-  }
-
-  .view-link:hover {
-    color: var(--text-display);
-  }
-
-  .budget-content {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .budget-numbers {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-xs);
-  }
-
-  .budget-spent {
-    font-family: var(--font-mono);
-    font-size: var(--heading);
-    font-weight: 700;
-    color: var(--text-display);
-  }
-
-  .budget-total {
-    font-family: var(--font-mono);
-    font-size: var(--body-sm);
-    color: var(--text-disabled);
-  }
-
-  .budget-remaining {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .budget-remain-value {
-    font-family: var(--font-mono);
-    font-size: var(--body);
-    font-weight: 700;
-  }
-
-  .budget-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-lg) 0;
-  }
-
-  .set-budget-link {
-    font-family: var(--font-mono);
-    font-size: var(--label);
-    letter-spacing: 0.06em;
-    color: var(--interactive);
-    text-decoration: none;
-  }
-
-  /* Activity */
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: var(--space-sm);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .activity-list {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .activity-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-sm) 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .activity-row:last-child {
-    border-bottom: none;
-  }
-
-  .activity-info {
+  /* Greeting */
+  .dash-greeting {
     display: flex;
     flex-direction: column;
     gap: var(--space-2xs);
   }
 
-  .activity-name {
-    font-family: var(--font-body);
+  .dash-greeting-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .dash-greeting-avatar {
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .dash-greeting-avatar-letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 16px;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  .dash-greeting-text-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .dash-greeting-text {
+    font-family: var(--font-display);
+    font-size: var(--heading);
+    color: var(--text-display);
+    font-weight: 700;
+  }
+
+  .dash-greeting-date {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+  }
+
+  /* Card Base */
+  .dash-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-compact);
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .dash-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dash-card-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.12em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  .dash-card-link {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-disabled);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+    flex-shrink: 0;
+  }
+
+  .dash-card-link:hover {
+    color: var(--text-display);
+  }
+
+  .dash-week-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--text-disabled);
+  }
+
+  .dash-empty-msg {
+    font-family: var(--font-mono);
     font-size: var(--body-sm);
+    color: var(--text-disabled);
+    padding: var(--space-lg) 0;
+    text-align: center;
+  }
+
+  /* Budget Hero */
+  .dash-card-budget {
+    background: var(--surface-raised);
+  }
+
+  .dash-budget-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: var(--space-lg);
+  }
+
+  .dash-budget-spent {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .dash-budget-amount {
+    font-family: var(--font-display);
+    font-size: var(--display-md);
+    color: var(--text-display);
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .dash-budget-of {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-disabled);
+    letter-spacing: 0.06em;
+  }
+
+  .dash-budget-stats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    align-items: flex-end;
+  }
+
+  .dash-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+  }
+
+  .dash-stat-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--text-disabled);
+  }
+
+  .dash-stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    font-weight: 700;
     color: var(--text-primary);
   }
 
-  .activity-points {
-    font-family: var(--font-mono);
-    font-size: var(--body-sm);
-    font-weight: 700;
-    color: var(--success);
+  .dash-budget-bar {
+    display: flex;
+    gap: 3px;
+    align-items: center;
   }
 
-  .activity-expense {
+  .dash-bar-seg {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 1px;
+    transition: background var(--duration-micro) var(--ease-out);
+  }
+
+  .dash-bar-seg-on {
+    background: var(--text-display);
+  }
+
+  /* Sparkline */
+  .dash-sparkline {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: stretch;
+    height: 72px;
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+  }
+
+  .dash-spark-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .dash-spark-val {
     font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+    line-height: 1;
+    flex-shrink: 0;
+    min-height: 10px;
+  }
+
+  .dash-spark-val-empty {
+    min-height: 10px;
+    flex-shrink: 0;
+  }
+
+  .dash-spark-bar-wrap {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .dash-spark-bar {
+    width: 100%;
+    max-width: 24px;
+    background: var(--border-visible);
+    border-radius: 1px;
+    min-height: 2px;
+  }
+
+  .dash-spark-today .dash-spark-bar {
+    background: var(--text-display);
+  }
+
+  .dash-spark-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--text-disabled);
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .dash-spark-today .dash-spark-label {
+    color: var(--text-primary);
+  }
+
+  .dash-spark-today .dash-spark-val {
+    color: var(--text-display);
+  }
+
+  /* Meals Card */
+  .dash-meal-count {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--text-disabled);
+    letter-spacing: 0.06em;
+  }
+
+  .dash-meals-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .dash-meal-slot {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-compact);
+    padding: var(--space-sm) var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    transition: border-color var(--duration-micro) var(--ease-out);
+  }
+
+  .dash-meal-current {
+    border-color: var(--border-visible);
+    background: var(--surface-raised);
+  }
+
+  .dash-meal-slot.dash-meal-empty .dash-meal-slot-desc {
+    color: var(--text-disabled);
+  }
+
+  .dash-meal-slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dash-meal-slot-type {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--text-disabled);
+  }
+
+  .dash-meal-current .dash-meal-slot-type {
+    color: var(--text-secondary);
+  }
+
+  .dash-meal-slot-tag {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    color: var(--text-disabled);
+  }
+
+  .dash-meal-slot-desc {
+    font-family: var(--font-body);
     font-size: var(--body-sm);
+    color: var(--text-primary);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  /* Scores Row */
+  .dash-card-scores .dash-card-header {
+    margin-bottom: calc(-1 * var(--space-xs));
+  }
+
+  .dash-scores-row {
+    display: flex;
+    gap: var(--space-3xl);
+    align-items: flex-end;
+  }
+
+  .dash-score-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .dash-score-value {
+    font-family: var(--font-display);
+    font-size: var(--display-sm);
+    color: var(--text-secondary);
+    line-height: 1;
     font-weight: 700;
-    color: var(--accent);
+  }
+
+  .dash-score-mine .dash-score-value {
+    font-size: var(--display-md);
+    color: var(--text-display);
+  }
+
+  .dash-score-unit {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-disabled);
+  }
+
+  .dash-score-name {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  .dash-score-mine .dash-score-name {
+    color: var(--text-primary);
+  }
+
+  .dash-score-avatar {
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .dash-score-avatar-letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--font-mono);
+  }
+
+  .dash-comparison-bar {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+  }
+
+  .dash-bar-gap {
+    width: 6px;
+    flex-shrink: 0;
   }
 
   /* Quick Actions */
-  .quick-actions {
+  .dash-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-md);
   }
 
-  .quick-action-btn {
-    display: flex;
-    justify-content: space-between;
+  .dash-card-action {
+    flex-direction: row;
     align-items: center;
-    padding: var(--space-md) var(--space-lg);
-    border: 1px solid var(--border-visible);
-    border-radius: var(--radius-compact);
+    gap: var(--space-md);
     text-decoration: none;
-    transition: all var(--duration-micro) var(--ease-out);
+    cursor: pointer;
+    padding: var(--space-md) var(--space-lg);
+    transition: border-color var(--duration-micro) var(--ease-out);
   }
 
-  .quick-action-btn:hover {
+  .dash-card-action:hover {
     border-color: var(--text-primary);
   }
 
-  .qa-label {
+  .dash-action-icon {
     font-family: var(--font-mono);
-    font-size: var(--label);
-    letter-spacing: 0.06em;
-    color: var(--text-primary);
+    font-size: var(--caption);
+    color: var(--text-secondary);
+    flex-shrink: 0;
   }
 
-  .qa-arrow {
+  .dash-action-label {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.08em;
+    color: var(--text-primary);
+    flex: 1;
+  }
+
+  .dash-action-arrow {
     font-size: var(--body);
     color: var(--text-disabled);
     transition: color var(--duration-micro) var(--ease-out);
   }
 
-  .quick-action-btn:hover .qa-arrow {
+  .dash-card-action:hover .dash-action-arrow {
     color: var(--text-display);
   }
 
+  /* Responsive */
   @media (max-width: 768px) {
-    .hero-scores {
+    .dash-budget-hero {
       flex-direction: column;
+      align-items: flex-start;
+    }
+    .dash-budget-stats {
+      flex-direction: row;
       gap: var(--space-lg);
       align-items: flex-start;
     }
-    .quick-actions {
+    .dash-stat {
+      align-items: flex-start;
+    }
+    .dash-meals-grid {
+      grid-template-columns: 1fr;
+    }
+    .dash-scores-row {
+      gap: var(--space-xl);
+    }
+    .dash-score-mine .dash-score-value {
+      font-size: var(--display-sm);
+    }
+    .dash-actions {
       grid-template-columns: 1fr;
     }
   }
