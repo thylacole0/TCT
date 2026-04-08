@@ -1,0 +1,31 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ShoppingListIsland from '../../components/islands/ShoppingListIsland';
+import { createAuthClient } from '../../lib/supabase';
+import { getMondayChile, getMonthStartChile, formatDateCL } from '../../lib/dates';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+
+const supabase = createAuthClient(accessToken);
+
+// Get budget IDs so purchased items can be registered as expenses
+const weekStartStr = formatDateCL(getMondayChile());
+const monthStartStr = formatDateCL(getMonthStartChile());
+
+const [comidaBudgetRes, aseoBudgetRes] = await Promise.all([
+  supabase.from('budget_weeks').select('id').eq('week_start', weekStartStr).eq('budget_type', 'comida').single(),
+  supabase.from('budget_weeks').select('id').eq('week_start', monthStartStr).eq('budget_type', 'aseo').single(),
+]);
+
+const isReadOnly = Astro.locals.userRole === 'admin';
+---
+
+<Layout title="TCT — Lista de Compras" currentPath="/lista">
+  <ShoppingListIsland
+    client:load
+    comidaBudgetWeekId={comidaBudgetRes.data?.id}
+    aseoBudgetWeekId={aseoBudgetRes.data?.id}
+    isReadOnly={isReadOnly}
+  />
+</Layout>

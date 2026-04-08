@@ -27,6 +27,7 @@ pnpm-debug.log*
 .agent/
 .agents/
 .claude/
+.github/
 
 # vercel
 .vercel/
