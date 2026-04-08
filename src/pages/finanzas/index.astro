@@ -2,24 +2,30 @@
 import Layout from '../../layouts/Layout.astro';
 import BudgetIsland from '../../components/islands/BudgetIsland';
 import { createAuthClient } from '../../lib/supabase';
-import { getMondayChile, formatDateCL } from '../../lib/dates';
+import { getMondayChile, getMonthStartChile, getMonthEndChile, formatDateCL } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 
 const supabase = createAuthClient(accessToken);
 
-// Current week calculation (Chile timezone)
+// Current week calculation (Chile timezone) — for COMIDA (weekly)
 const weekStart = getMondayChile();
 const weekEnd = new Date(weekStart);
 weekEnd.setDate(weekStart.getDate() + 6);
 const weekStartStr = formatDateCL(weekStart);
 const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
 
-// Parallel: budgets (comida + aseo)
+// Current month calculation (Chile timezone) — for ASEO (monthly)
+const monthStart = getMonthStartChile();
+const monthEnd = getMonthEndChile();
+const monthStartStr = formatDateCL(monthStart);
+const monthLabel = monthStart.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
+
+// Parallel: budgets (comida weekly + aseo monthly)
 const [comidaBudgetRes, aseoBudgetRes] = await Promise.all([
   supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'comida').single(),
-  supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'aseo').single(),
+  supabase.from('budget_weeks').select('*').eq('week_start', monthStartStr).eq('budget_type', 'aseo').single(),
 ]);
 
 const currentBudget = comidaBudgetRes.data;
@@ -113,6 +119,7 @@ const isReadOnly = Astro.locals.userRole === 'admin';
   <BudgetIsland
     client:load
     weekLabel={weekLabel}
+    aseoLabel={monthLabel}
     comida={{
       budgetWeekId: currentBudget?.id,
       budgetAmount: comidaBudgetAmount,

@@ -37,6 +37,7 @@ interface BudgetData {
 
 interface Props {
   weekLabel: string;
+  aseoLabel: string;
   comida: BudgetData;
   aseo: BudgetData;
   isReadOnly?: boolean;
@@ -127,7 +128,7 @@ function PieChart({ data, size = 140 }: { data: Array<[string, number]>; size?: 
 }
 
 // ─── Main Component ───
-export default function BudgetIsland({ weekLabel, comida, aseo, isReadOnly }: Props) {
+export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isReadOnly }: Props) {
   const [view, setView] = useState<ViewMode>("resumen");
 
   // Tag expenses with their budget type
@@ -169,12 +170,12 @@ export default function BudgetIsland({ weekLabel, comida, aseo, isReadOnly }: Pr
       {/* Top section: summary or budget detail — uses display:none to preserve state */}
       <div class="fh-panel-wrapper">
         <div class="fh-panel" style={{ display: view === "resumen" ? "block" : "none" }}>
-          <SummaryView weekLabel={weekLabel} comida={comida} aseo={aseo} />
+          <SummaryView weekLabel={weekLabel} aseoLabel={aseoLabel} comida={comida} aseo={aseo} />
         </div>
         <div class="fh-panel" style={{ display: view === "comida" ? "block" : "none" }}>
           <BudgetPanel
             data={{ ...comida, expenses: comidaExpenses }}
-            weekLabel={weekLabel}
+            periodLabel={weekLabel}
             budgetType="comida"
             isReadOnly={isReadOnly}
           />
@@ -182,7 +183,7 @@ export default function BudgetIsland({ weekLabel, comida, aseo, isReadOnly }: Pr
         <div class="fh-panel" style={{ display: view === "aseo" ? "block" : "none" }}>
           <BudgetPanel
             data={{ ...aseo, expenses: aseoExpenses }}
-            weekLabel={weekLabel}
+            periodLabel={aseoLabel}
             budgetType="aseo"
             isReadOnly={isReadOnly}
           />
@@ -198,7 +199,7 @@ export default function BudgetIsland({ weekLabel, comida, aseo, isReadOnly }: Pr
 }
 
 // ─── Summary View (comparison) ───
-function SummaryView({ weekLabel, comida, aseo }: { weekLabel: string; comida: BudgetData; aseo: BudgetData }) {
+function SummaryView({ weekLabel, aseoLabel, comida, aseo }: { weekLabel: string; aseoLabel: string; comida: BudgetData; aseo: BudgetData }) {
   const totalBudget = comida.budgetAmount + aseo.budgetAmount;
   const totalSpent = comida.totalSpent + aseo.totalSpent;
   const totalRemaining = totalBudget - totalSpent;
@@ -212,7 +213,7 @@ function SummaryView({ weekLabel, comida, aseo }: { weekLabel: string; comida: B
   return (
     <div class="fh-dashboard">
       <div class="fh-week-header">
-        <span class="fh-label">RESUMEN SEMANAL</span>
+        <span class="fh-label">RESUMEN</span>
         <span class="fh-label">{weekLabel}</span>
       </div>
 
@@ -326,21 +327,23 @@ function BudgetCard({ label, amount, spent }: { label: string; amount: number; s
 }
 
 // ─── Budget Panel (single type detail view) ───
-function BudgetPanel({ data, weekLabel, budgetType, isReadOnly }: { data: BudgetData; weekLabel: string; budgetType: BudgetType; isReadOnly?: boolean }) {
+function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: BudgetData; periodLabel: string; budgetType: BudgetType; isReadOnly?: boolean }) {
   const { budgetAmount, totalSpent, expenses, dailySpending, categoryTotals, productTotals, budgetWeekId, categories } = data;
   const remaining = budgetAmount - totalSpent;
   const pct = budgetAmount > 0 ? Math.min((totalSpent / budgetAmount) * 100, 100) : 0;
   const overflow = totalSpent > budgetAmount;
   const maxDaily = Math.max(...Object.values(dailySpending), 1);
   const budgetLabel = budgetType === "aseo" ? "ASEO" : "COMIDA";
+  const periodTypeLabel = budgetType === "aseo" ? "MES ACTUAL" : "SEMANA ACTUAL";
+  const noPeriodLabel = budgetType === "aseo" ? "ESTE MES" : "ESTA SEMANA";
   const typeParam = budgetType === "aseo" ? "?type=aseo" : "";
 
   return (
     <div class="fh-dashboard">
       {/* Budget hero */}
       <div class="fh-week-header">
-        <span class="fh-label">SEMANA ACTUAL · {budgetLabel}</span>
-        <span class="fh-label">{weekLabel}</span>
+        <span class="fh-label">{periodTypeLabel} · {budgetLabel}</span>
+        <span class="fh-label">{periodLabel}</span>
       </div>
 
       {budgetAmount > 0 ? (
@@ -382,7 +385,7 @@ function BudgetPanel({ data, weekLabel, budgetType, isReadOnly }: { data: Budget
         </div>
       ) : (
         <div class="fh-no-budget">
-          <span class="fh-empty">[SIN PRESUPUESTO DE {budgetLabel} ESTA SEMANA]</span>
+          <span class="fh-empty">[SIN PRESUPUESTO DE {budgetLabel} {noPeriodLabel}]</span>
           <a href={`/finanzas/presupuesto${typeParam}`} class="fh-link">ESTABLECER PRESUPUESTO →</a>
         </div>
       )}
@@ -504,7 +507,7 @@ function ExpenseList({ expenses }: { expenses: Expense[] }) {
       })}
       {expenses.length === 0 && (
         <p class="fh-empty" style={{ padding: "var(--space-xl) 0", textAlign: "center" }}>
-          [SIN GASTOS ESTA SEMANA]
+          [SIN GASTOS REGISTRADOS]
         </p>
       )}
     </div>
@@ -537,7 +540,7 @@ function FilterableExpenseList({ expenses, viewFilter = "todos" }: { expenses: E
   return (
     <div class="fh-section">
       <div class="fh-section-header">
-        <span class="fh-label">GASTOS DE LA SEMANA</span>
+        <span class="fh-label">GASTOS DEL PERÍODO</span>
         <span class="fh-caption">{filtered.length} REGISTROS</span>
       </div>
       <div class="bi-filter-tabs">

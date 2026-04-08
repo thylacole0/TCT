@@ -59,6 +59,22 @@ export function getMondayChile(date?: Date): Date {
   return d;
 }
 
+/** Returns the 1st day of the current month in Chile timezone */
+export function getMonthStartChile(date?: Date): Date {
+  const d = date ? new Date(date) : nowChile();
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Returns the last day of the month for the given date */
+export function getMonthEndChile(date?: Date): Date {
+  const d = date ? new Date(date) : nowChile();
+  d.setMonth(d.getMonth() + 1, 0); // day 0 of next month = last day of current
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /** Returns month start/end ISO strings for Chile timezone */
 export function monthBoundsChile(): { monthStart: string; monthEnd: string } {
   const n = nowChile();

@@ -3,7 +3,7 @@ import Layout from '../../layouts/Layout.astro';
 import Input from '../../components/Input.astro';
 import Button from '../../components/Button.astro';
 import { createAuthClient } from '../../lib/supabase';
-import { getMondayChile, formatDateCL } from '../../lib/dates';
+import { getMondayChile, getMonthStartChile, formatDateCL } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -14,19 +14,27 @@ const supabase = createAuthClient(accessToken);
 const budgetType = Astro.url.searchParams.get('type') === 'aseo' ? 'aseo' : 'comida';
 const budgetLabel = budgetType === 'aseo' ? 'ASEO' : 'COMIDA';
 const backLink = budgetType === 'aseo' ? '/limpieza' : '/finanzas';
+const isMonthly = budgetType === 'aseo';
 
-// Current week (Chile timezone)
-const weekStart = getMondayChile();
-const weekStartStr = formatDateCL(weekStart);
-const weekEnd = new Date(weekStart);
-weekEnd.setDate(weekStart.getDate() + 6);
-const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
+// Period start: weekly for comida, monthly for aseo
+const periodStart = isMonthly ? getMonthStartChile() : getMondayChile();
+const periodStartStr = formatDateCL(periodStart);
+
+// Labels
+let periodLabel: string;
+if (isMonthly) {
+  periodLabel = periodStart.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
+} else {
+  const weekEnd = new Date(periodStart);
+  weekEnd.setDate(periodStart.getDate() + 6);
+  periodLabel = `${periodStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
+}
 
 // Get existing budget for this type
 const { data: currentBudget } = await supabase
   .from('budget_weeks')
   .select('*')
-  .eq('week_start', weekStartStr)
+  .eq('week_start', periodStartStr)
   .eq('budget_type', budgetType)
   .single();
 
@@ -45,7 +53,7 @@ if (Astro.request.method === 'POST') {
       .from('budget_weeks')
       .upsert(
         {
-          week_start: weekStartStr,
+          week_start: periodStartStr,
           budget_amount: parseFloat(budgetAmount),
           budget_type: budgetType,
           created_by: user.id,
@@ -69,7 +77,7 @@ if (Astro.request.method === 'POST') {
     </section>
 
     <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO {budgetLabel}</h2>
-    <span class="label">{weekLabel}</span>
+    <span class="label">{periodLabel}</span>
 
     {errorMsg && (
       <div class="error-box">[ERROR: {errorMsg}]</div>
@@ -77,7 +85,7 @@ if (Astro.request.method === 'POST') {
 
     <form method="POST" class="budget-form">
       <Input 
-        label="Presupuesto semanal (CLP)" 
+        label={isMonthly ? "Presupuesto mensual (CLP)" : "Presupuesto semanal (CLP)"}
         name="budget_amount" 
         type="number" 
         value={existingAmount.toString()} 
@@ -86,7 +94,7 @@ if (Astro.request.method === 'POST') {
       />
 
       <p class="hint-text">
-        Este monto será el presupuesto de {budgetLabel.toLowerCase()} para la semana {weekLabel.toLowerCase()}.
+        Este monto será el presupuesto de {budgetLabel.toLowerCase()} para {isMonthly ? 'el mes de' : 'la semana'} {periodLabel.toLowerCase()}.
       </p>
 
       <div class="form-actions">
