@@ -1,5 +1,8 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
+import { todayChile } from "../../../lib/dates";
+import { resolveBudgetForExpense } from "../../../lib/budgets";
+import { normalizeFoodName } from "../../../lib/food/normalization";
 
 // GET — fetch items by list_type (comida/aseo), optionally filter by is_bought
 export const GET: APIRoute = async ({ url, locals }) => {
@@ -45,7 +48,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     const body = await request.json();
-    const { name, list_type, quantity } = body;
+    const { name, list_type, quantity, source_recipe_id, estimated_price, unit, notes } = body;
 
     if (!name || !list_type) {
       return new Response("name and list_type required", { status: 400 });
@@ -54,14 +57,72 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return new Response("list_type must be comida or aseo", { status: 400 });
     }
 
+    const cleanName = String(name).trim();
+    const cleanUnit = typeof unit === "string" ? unit.trim() : "";
+    const cleanNotes = typeof notes === "string" ? notes.trim() : "";
+    const normalizedName = normalizeFoodName(cleanName);
+    const requestedQuantity = Math.max(1, Number(quantity) || 1);
+
+    if (!cleanName) {
+      return new Response("name required", { status: 400 });
+    }
+
+    if (normalizedName) {
+      const { data: pendingItems, error: pendingError } = await supabase
+        .from("shopping_list_items")
+        .select("id, name, quantity, unit, notes, source_recipe_id")
+        .eq("list_type", list_type)
+        .eq("is_bought", false)
+        .limit(120);
+
+      if (pendingError) {
+        return new Response(pendingError.message, { status: 500 });
+      }
+
+      const existing = (pendingItems || []).find((item: any) => normalizeFoodName(item.name || "") === normalizedName);
+      if (existing) {
+        const mergedNotes = mergeNotes(existing.notes, cleanNotes);
+        const update: Record<string, unknown> = {
+          quantity: Math.max(1, Number(existing.quantity) || 1) + requestedQuantity,
+        };
+        if (cleanUnit && !existing.unit) update.unit = cleanUnit;
+        if (mergedNotes) update.notes = mergedNotes;
+        if (source_recipe_id && !existing.source_recipe_id) update.source_recipe_id = source_recipe_id;
+        if (estimated_price) update.estimated_price = estimated_price;
+
+        const { data, error } = await supabase
+          .from("shopping_list_items")
+          .update(update)
+          .eq("id", existing.id)
+          .select("*, profiles:created_by(display_name, avatar_url)")
+          .single();
+
+        if (error) {
+          return new Response(error.message, { status: 500 });
+        }
+
+        return new Response(JSON.stringify(data), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    const payload: Record<string, unknown> = {
+      name: cleanName,
+      list_type,
+      quantity: requestedQuantity,
+      created_by: user.id,
+    };
+
+    if (source_recipe_id) payload.source_recipe_id = source_recipe_id;
+    if (estimated_price) payload.estimated_price = estimated_price;
+    if (cleanUnit) payload.unit = cleanUnit;
+    if (cleanNotes) payload.notes = cleanNotes;
+
     const { data, error } = await supabase
       .from("shopping_list_items")
-      .insert({
-        name: name.trim(),
-        list_type,
-        quantity: quantity || 1,
-        created_by: user.id,
-      })
+      .insert(payload)
       .select("*, profiles:created_by(display_name, avatar_url)")
       .single();
 
@@ -78,6 +139,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
   }
 };
 
+function mergeNotes(existing: unknown, incoming: string): string {
+  const current = typeof existing === "string" ? existing.trim() : "";
+  if (!current) return incoming;
+  if (!incoming || current.includes(incoming)) return current;
+  return `${current} · ${incoming}`;
+}
+
 // PATCH — mark as bought (with price) or toggle back to pending
 export const PATCH: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
@@ -92,10 +160,23 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
 
   try {
     const body = await request.json();
-    const { id, is_bought, bought_price } = body;
+    const { id, is_bought, bought_price, budget_week_id, budget_type } = body;
 
     if (!id) {
       return new Response("id required", { status: 400 });
+    }
+
+    const { data: existingItem, error: itemError } = await supabase
+      .from("shopping_list_items")
+      .select("id, name, list_type, quantity, converted_expense_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (itemError) {
+      return new Response(itemError.message, { status: 500 });
+    }
+    if (!existingItem) {
+      return new Response("Shopping item not found", { status: 404 });
     }
 
     const update: Record<string, unknown> = { is_bought: !!is_bought };
@@ -103,10 +184,33 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
       update.bought_price = bought_price ?? null;
       update.bought_at = new Date().toISOString();
       update.bought_by = user.id;
+
+      const price = Number(bought_price) || 0;
+      if (price > 0 && !existingItem.converted_expense_id) {
+        const expenseId = await createExpenseForShoppingItem(supabase, {
+          userId: user.id,
+          itemName: existingItem.name,
+          quantity: Number(existingItem.quantity) || 1,
+          price,
+          budgetWeekId: typeof budget_week_id === "string" ? budget_week_id : null,
+          budgetType: budget_type === "comida" || budget_type === "aseo" ? budget_type : existingItem.list_type,
+        });
+        update.converted_expense_id = expenseId;
+      }
     } else {
+      if (existingItem.converted_expense_id) {
+        const { error: deleteExpenseError } = await supabase.rpc("delete_expense", {
+          p_expense_id: existingItem.converted_expense_id,
+        });
+
+        if (deleteExpenseError) {
+          return new Response(deleteExpenseError.message, { status: 500 });
+        }
+      }
       update.bought_price = null;
       update.bought_at = null;
       update.bought_by = null;
+      update.converted_expense_id = null;
     }
 
     const { data, error } = await supabase
@@ -128,6 +232,60 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     return new Response(e.message || "Invalid request", { status: 400 });
   }
 };
+
+async function createExpenseForShoppingItem(
+  supabase: any,
+  options: {
+    userId: string;
+    itemName: string;
+    quantity: number;
+    price: number;
+    budgetWeekId: string | null;
+    budgetType: "comida" | "aseo";
+  }
+): Promise<string> {
+  const expenseDate = todayChile();
+  const resolvedBudget = await resolveBudgetForExpense(supabase, {
+    budgetWeekId: options.budgetWeekId,
+    budgetType: options.budgetType,
+    expenseDate,
+  });
+
+  const { data: expense, error: expenseError } = await supabase
+    .from("expenses")
+    .insert({
+      budget_week_id: resolvedBudget.budgetWeekId,
+      budget_type: resolvedBudget.budgetType,
+      user_id: options.userId,
+      amount: options.price,
+      description: `Lista: ${options.itemName}`,
+      category: "Supermercado",
+      expense_date: expenseDate,
+    })
+    .select("id")
+    .single();
+
+  if (expenseError || !expense?.id) {
+    throw new Error(expenseError?.message || "No se pudo crear gasto desde lista");
+  }
+
+  const quantity = Math.max(1, options.quantity);
+  const { error: itemsError } = await supabase
+    .from("expense_items")
+    .insert({
+      expense_id: expense.id,
+      name: options.itemName,
+      quantity,
+      unit_price: options.price / quantity,
+    });
+
+  if (itemsError) {
+    await supabase.from("expenses").delete().eq("id", expense.id);
+    throw new Error(itemsError.message);
+  }
+
+  return expense.id;
+}
 
 // DELETE — remove an item
 export const DELETE: APIRoute = async ({ request, locals }) => {

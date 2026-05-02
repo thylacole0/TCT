@@ -6,6 +6,9 @@ interface ImportMetaEnv {
   readonly VAPID_PUBLIC_KEY?: string;
   readonly VAPID_PRIVATE_KEY?: string;
   readonly CRON_SECRET?: string;
+  readonly GEMINI_API_KEY?: string;
+  readonly AI_PROVIDER?: string;
+  readonly AI_MODEL?: string;
 }
 
 interface ImportMeta {

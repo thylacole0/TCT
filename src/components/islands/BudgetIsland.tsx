@@ -242,7 +242,7 @@ function SummaryView({ weekLabel, aseoLabel, comida, aseo }: { weekLabel: string
         <div class="bi-total-row">
           <div class="bi-total-pair">
             <span class="fh-label">TOTAL GASTADO</span>
-            <span class="fh-hero-value" style={{ fontSize: 'var(--display-sm)' }}>{formatCLP(totalSpent)}</span>
+            <span class="fh-hero-value" style={{ fontSize: 'var(--display-md)' }}>{formatCLP(totalSpent)}</span>
           </div>
           <div class="bi-total-pair">
             <span class="fh-label">TOTAL PRESUPUESTO</span>

@@ -146,11 +146,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
     return (
       <div class="wt-root">
         <div class="wt-skeleton">
-          {[...Array(4)].map((_, i) => (
-            <div class="wt-skeleton-row" key={i}>
-              <div class="wt-skeleton-bar" />
-            </div>
-          ))}
+          <p class="wt-loading-state">[LOADING...]</p>
         </div>
       </div>
     );

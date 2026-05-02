@@ -11,6 +11,7 @@ interface ShoppingItem {
   bought_price: number | null;
   bought_at: string | null;
   bought_by: string | null;
+  converted_expense_id?: string | null;
   created_by: string;
   created_at: string;
   profiles?: { display_name: string; avatar_url: string | null };
@@ -91,6 +92,8 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
   const [adding, setAdding] = useState(false);
   const [buyingId, setBuyingId] = useState<string | null>(null);
   const [buyPrice, setBuyPrice] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
   const priceInputRef = useRef<HTMLInputElement>(null);
 
   const pending = items.filter((i) => !i.is_bought);
@@ -127,6 +130,8 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
     const name = newName.trim();
     if (!name) return;
     setAdding(true);
+    setStatus("");
+    setError("");
     try {
       const res = await fetch("/api/shopping/list", {
         method: "POST",
@@ -138,9 +143,11 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
         setItems((prev) => [item, ...prev]);
         setNewName("");
         setNewQty(1);
+        setStatus("[AGREGADO]");
       }
     } catch (e) {
       console.error("Failed to add item", e);
+      setError("[ERROR: NO SE PUDO AGREGAR]");
     } finally {
       setAdding(false);
     }
@@ -161,6 +168,8 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
     );
     setBuyingId(null);
     setBuyPrice("");
+    setStatus("");
+    setError("");
 
     try {
       const res = await fetch("/api/shopping/list", {
@@ -170,57 +179,54 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
           id: item.id,
           is_bought: true,
           bought_price: price || null,
+          budget_week_id: budgetWeekId || null,
+          budget_type: listType,
         }),
       });
 
-      if (res.ok && price > 0 && budgetWeekId) {
-        // Register as expense
-        const category = listType === "aseo" ? "Supermercado" : "Supermercado";
-        await fetch("/api/expenses/create-with-items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            category,
-            budget_week_id: budgetWeekId,
-            budget_type: listType,
-            items: [
-              {
-                name: item.name,
-                quantity: item.quantity,
-                unit_price: price / item.quantity,
-              },
-            ],
-          }),
-        });
-      }
-    } catch {
+      if (!res.ok) throw new Error(await res.text());
+      const updated = await res.json();
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+      setStatus(price > 0 ? "[COMPRADO · GASTO REGISTRADO]" : "[COMPRADO]");
+    } catch (err: any) {
       // Revert on failure
       setItems((prev) =>
         prev.map((i) =>
           i.id === item.id ? { ...i, is_bought: false, bought_price: null } : i
         )
       );
+      setError(`[ERROR: ${err.message || "NO SE PUDO MARCAR"}]`);
     }
   };
 
   const handleUnbuy = async (item: ShoppingItem) => {
+    if (item.converted_expense_id && !confirm("Desmarcar esta compra eliminará el gasto automático asociado. ¿Continuar?")) {
+      return;
+    }
+
     setItems((prev) =>
       prev.map((i) =>
         i.id === item.id ? { ...i, is_bought: false, bought_price: null } : i
       )
     );
     try {
-      await fetch("/api/shopping/list", {
+      const res = await fetch("/api/shopping/list", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: item.id, is_bought: false }),
       });
-    } catch {
+      if (!res.ok) throw new Error(await res.text());
+      const updated = await res.json();
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+      setStatus("[PENDIENTE · GASTO AUTOMATICO REVERSADO]");
+      setError("");
+    } catch (err: any) {
       setItems((prev) =>
         prev.map((i) =>
           i.id === item.id ? { ...i, is_bought: true, bought_price: item.bought_price } : i
         )
       );
+      setError(`[ERROR: ${err.message || "NO SE PUDO DESMARCAR"}]`);
     }
   };
 
@@ -228,13 +234,17 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
     const prev = items;
     setItems((p) => p.filter((i) => i.id !== id));
     try {
-      await fetch("/api/shopping/list", {
+      const res = await fetch("/api/shopping/list", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-    } catch {
+      if (!res.ok) throw new Error(await res.text());
+      setStatus("[ELIMINADO]");
+      setError("");
+    } catch (err: any) {
       setItems(prev);
+      setError(`[ERROR: ${err.message || "NO SE PUDO ELIMINAR"}]`);
     }
   };
 
@@ -254,6 +264,9 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
         <span class="fh-label">LISTA DE COMPRAS · {label}</span>
         <span class="fh-caption">{pending.length} PENDIENTES</span>
       </div>
+
+      {status && <p class="sl-status">{status}</p>}
+      {error && <p class="sl-error">{error}</p>}
 
       {/* Add item form */}
       {!isReadOnly && (
@@ -282,14 +295,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
 
       {/* Pending items */}
       {loading ? (
-        <div class="sl-skeleton-list">
-          {Array.from({ length: 4 }, (_, i) => (
-            <div class="sl-skeleton-row" key={i}>
-              <div class="sl-skeleton-check" />
-              <div class="sl-skeleton-text" style={{ width: `${50 + (i % 3) * 15}%` }} />
-            </div>
-          ))}
-        </div>
+        <p class="sl-loading-state">[LOADING...]</p>
       ) : (
         <>
           <div class="sl-items">
