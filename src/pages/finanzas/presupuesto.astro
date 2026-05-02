@@ -4,6 +4,7 @@ import Input from '../../components/Input.astro';
 import Button from '../../components/Button.astro';
 import { createAuthClient } from '../../lib/supabase';
 import { getMondayChile, getMonthStartChile, formatDateCL } from '../../lib/dates';
+import { linkExistingExpensesToBudget } from '../../lib/budgets';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -13,7 +14,7 @@ const supabase = createAuthClient(accessToken);
 // Budget type from query param (default: comida)
 const budgetType = Astro.url.searchParams.get('type') === 'aseo' ? 'aseo' : 'comida';
 const budgetLabel = budgetType === 'aseo' ? 'ASEO' : 'COMIDA';
-const backLink = budgetType === 'aseo' ? '/limpieza' : '/finanzas';
+const backLink = '/finanzas';
 const isMonthly = budgetType === 'aseo';
 
 // Period start: weekly for comida, monthly for aseo
@@ -49,7 +50,7 @@ if (Astro.request.method === 'POST') {
   if (!budgetAmount || parseFloat(budgetAmount) <= 0) {
     errorMsg = 'El monto debe ser mayor a 0';
   } else {
-    const { error } = await supabase
+    const { data: budget, error } = await supabase
       .from('budget_weeks')
       .upsert(
         {
@@ -59,11 +60,20 @@ if (Astro.request.method === 'POST') {
           created_by: user.id,
         },
         { onConflict: 'week_start,budget_type' }
-      );
+      )
+      .select('id')
+      .single();
 
     if (error) {
       errorMsg = error.message;
     } else {
+      if (budget?.id) {
+        await linkExistingExpensesToBudget(supabase, {
+          budgetId: budget.id,
+          budgetType,
+          periodStart: periodStartStr,
+        });
+      }
       return Astro.redirect(backLink);
     }
   }
@@ -73,7 +83,7 @@ if (Astro.request.method === 'POST') {
 <Layout title={`TCT — Presupuesto ${budgetLabel}`} currentPath={backLink}>
   <div class="presupuesto-page">
     <section class="header-section">
-      <a href={backLink} class="back-link">← {budgetLabel === 'ASEO' ? 'LIMPIEZA' : 'FINANZAS'}</a>
+      <a href={backLink} class="back-link">← FINANZAS</a>
     </section>
 
     <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO {budgetLabel}</h2>

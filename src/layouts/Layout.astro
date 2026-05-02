@@ -11,7 +11,7 @@ import { ClientRouter } from 'astro:transitions';
 
 const { 
   title = 'TCT — Tu Casa Tracker', 
-  description = 'Gestiona la limpieza y finanzas de tu hogar',
+  description = 'Gestiona tu peso, finanzas y comidas del hogar',
   showNav = true,
   currentPath = Astro.url.pathname,
 } = Astro.props;
@@ -42,6 +42,14 @@ const {
     <ClientRouter />
   </head>
   <body>
+    <!-- Push notification opt-in banner -->
+    <div id="push-banner" class="push-banner" aria-hidden="true">
+      <span class="push-banner-text">¿Activar recordatorios de peso y comidas?</span>
+      <div class="push-banner-actions">
+        <button id="push-accept" class="push-btn push-btn-accept">ACTIVAR</button>
+        <button id="push-dismiss" class="push-btn push-btn-dismiss">NO</button>
+      </div>
+    </div>
     <!-- Page transition loader -->
     <div id="page-loader" class="page-loader" aria-hidden="true" transition:persist>
       <div class="page-loader-inner">
@@ -62,6 +70,63 @@ const {
   /* Ensure islands take full width */
   astro-island {
     display: contents;
+  }
+
+  /* Push notification banner */
+  .push-banner {
+    position: fixed;
+    bottom: calc(var(--nav-height, 60px) + var(--space-md));
+    left: var(--space-md);
+    right: var(--space-md);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--surface-elevated, #1a1a1a);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transform: translateY(calc(100% + 80px));
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    pointer-events: none;
+  }
+  .push-banner-show {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .push-banner-text {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--text-primary);
+    letter-spacing: 0.04em;
+  }
+  .push-banner-actions {
+    display: flex;
+    gap: var(--space-xs);
+    flex-shrink: 0;
+  }
+  .push-btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s;
+  }
+  .push-btn-accept {
+    background: var(--text-display);
+    color: var(--bg);
+    border-color: var(--text-display);
+  }
+  .push-btn-dismiss:hover {
+    background: var(--surface);
   }
 
   /* --- View Transition Animations --- */
@@ -199,10 +264,98 @@ const {
   }
   initLoader();
 
-  // Register service worker
+  // Register service worker & push notifications
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(async (reg) => {
+      // Check if push notifications are supported and not yet subscribed
+      if (!('PushManager' in window) || !('Notification' in window)) return;
+      if (Notification.permission === 'granted') {
+        await ensurePushSubscription(reg);
+        return;
+      }
+      if (Notification.permission === 'denied') return;
+
+      // Show the notification banner after a short delay
+      if (!localStorage.getItem('tct-push-dismissed')) {
+        setTimeout(() => {
+          const banner = document.getElementById('push-banner');
+          if (banner) banner.classList.add('push-banner-show');
+        }, 2000);
+      }
+    }).catch((err) => {
       console.warn('SW registration failed:', err);
     });
+  }
+
+  // Handle notification banner buttons
+  document.getElementById('push-accept')?.addEventListener('click', async () => {
+    const banner = document.getElementById('push-banner');
+    if (banner) banner.classList.remove('push-banner-show');
+    localStorage.removeItem('tct-push-dismissed');
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      const reg = await navigator.serviceWorker.ready;
+      await ensurePushSubscription(reg);
+    }
+  });
+  document.getElementById('push-dismiss')?.addEventListener('click', () => {
+    const banner = document.getElementById('push-banner');
+    if (banner) banner.classList.remove('push-banner-show');
+    localStorage.setItem('tct-push-dismissed', '1');
+  });
+
+  async function ensurePushSubscription(reg: ServiceWorkerRegistration) {
+    try {
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        // Get VAPID key from server
+        const res = await fetch('/api/push/vapid-key');
+        if (!res.ok) return false;
+        const { publicKey } = await res.json();
+
+        const applicationServerKey = urlBase64ToUint8Array(publicKey);
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
+
+      // Send subscription to our API
+      const saveRes = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+      return saveRes.ok;
+    } catch (err) {
+      console.warn('Push subscription failed:', err);
+      return false;
+    }
+  }
+
+  (window as any).tctEnablePush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      return { ok: false, status: 'unsupported' };
+    }
+    const permission = Notification.permission === 'granted'
+      ? 'granted'
+      : await Notification.requestPermission();
+    if (permission !== 'granted') {
+      return { ok: false, status: permission };
+    }
+    localStorage.removeItem('tct-push-dismissed');
+    const reg = await navigator.serviceWorker.ready;
+    const ok = await ensurePushSubscription(reg);
+    return { ok, status: ok ? 'enabled' : 'failed' };
+  };
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) arr[i] = raw.charCodeAt(i);
+    return arr;
   }
 </script>

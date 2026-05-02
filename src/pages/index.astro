@@ -1,8 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { createAuthClient } from '../lib/supabase';
-import { nowChile, todayChile, getMondayChile, formatDateCL, monthBoundsChile, hourChile } from '../lib/dates';
-import DashboardActivity from '../components/islands/DashboardActivity';
+import { nowChile, todayChile, getMondayChile, formatDateCL, hourChile } from '../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -11,8 +10,6 @@ const supabase = createAuthClient(accessToken);
 
 // Current month boundaries (Chile timezone)
 const now = nowChile();
-const { monthStart, monthEnd } = monthBoundsChile();
-const monthLabel = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
 
 // Current week budget (Chile timezone)
 const weekStart = getMondayChile();
@@ -25,13 +22,8 @@ const currentMeal = hour < 10 ? 'Desayuno' : hour < 16 ? 'Almuerzo' : 'Once';
 const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
 
 // Parallel fetch all independent queries
-const [profilesRes, choreLogsRes, budgetRes, recentExpensesRes, todaysMealsRes, mealTypesRes] = await Promise.all([
+const [profilesRes, budgetRes, recentExpensesRes, todaysMealsRes, mealTypesRes, weightRes] = await Promise.all([
   supabase.from('profiles').select('*'),
-  supabase.from('chore_logs')
-    .select('*, chores(name, points), profiles(display_name, avatar_url)')
-    .gte('completed_at', monthStart)
-    .lte('completed_at', monthEnd)
-    .order('completed_at', { ascending: false }),
   supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'comida').single(),
   supabase.from('expenses')
     .select('*, profiles(display_name, avatar_url)')
@@ -39,13 +31,18 @@ const [profilesRes, choreLogsRes, budgetRes, recentExpensesRes, todaysMealsRes, 
     .limit(8),
   supabase.from('meal_plans').select('*, meal_types(name)').eq('meal_date', todayStr),
   supabase.from('meal_types').select('*').order('sort_order'),
+  supabase.from('weight_logs')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('log_date', { ascending: false })
+    .limit(4),
 ]);
 
 const profiles = profilesRes.data;
-const choreLogs = choreLogsRes.data;
 const currentBudget = budgetRes.data;
 const recentExpenses = recentExpensesRes.data || [];
 const mealTypes = mealTypesRes.data || [];
+const recentWeightLogs = weightRes.data || [];
 
 // Fetch expense items for recent expenses
 const expenseIds = recentExpenses.map((e: any) => e.id);
@@ -61,17 +58,6 @@ todaysMealsRes.data?.forEach((m: any) => {
 
 // Meal labels
 const MEAL_LABELS: Record<string, string> = { Desayuno: 'AM', Almuerzo: 'PM', Once: 'EVE' };
-
-// Calculate scores per user (exclude admin role)
-const scores: Record<string, number> = {};
-profiles?.filter(p => (p as any).role !== 'admin').forEach(p => { scores[p.id] = 0; });
-choreLogs?.forEach(log => {
-  if (scores[log.user_id] !== undefined) {
-    scores[log.user_id] = (scores[log.user_id] || 0) + log.points_earned;
-  }
-});
-
-const totalPoints = Object.values(scores).reduce((a, b) => a + b, 0);
 
 // Week expenses (depends on budget result)
 let weekExpenses = 0;
@@ -120,29 +106,16 @@ const budgetSegs = Array.from({ length: 20 }, (_, i) => {
   return { filled, color };
 });
 
-// Scores comparison bar
-const memberProfiles = profiles?.filter(p => (p as any).role !== 'admin') || [];
-const compSegs: Array<{ color: string; isGap?: boolean }> = [];
-memberProfiles.forEach((p, i) => {
-  const pct = totalPoints > 0 ? (scores[p.id] / totalPoints) * 100 : 50;
-  const segCount = Math.max(1, Math.round(pct / 5));
-  const color = i === 0 ? 'var(--text-display)' : 'var(--text-disabled)';
-  for (let s = 0; s < segCount; s++) compSegs.push({ color });
-  if (i < memberProfiles.length - 1) compSegs.push({ color: '', isGap: true });
-});
-
 // Today's meal filled count
 const filledMeals = mealTypes.filter(mt => todaysMeals[mt.name]).length;
 
-// Serialize activity for island
-const choreLogsSerialized = (choreLogs?.slice(0, 8) || []).map((log: any) => ({
-  choreName: log.chores?.name || '',
-  userName: log.profiles?.display_name || '',
-  userAvatar: log.profiles?.avatar_url || '',
-  points: log.points_earned,
-  date: new Date(log.completed_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }),
-}));
+// Weight: latest morning entry for dashboard card
+const latestWeightLog = recentWeightLogs.find((l: any) => l.time_of_day === 'morning') || recentWeightLogs[0];
+const latestWeight = latestWeightLog ? Number(latestWeightLog.weight_kg) : null;
+const todayHasMorning = recentWeightLogs.some((l: any) => l.log_date === todayStr && l.time_of_day === 'morning');
+const todayHasNight = recentWeightLogs.some((l: any) => l.log_date === todayStr && l.time_of_day === 'night');
 
+// Serialize recent expenses for activity list
 const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
   description: exp.description,
   userName: exp.profiles?.display_name || '',
@@ -249,53 +222,57 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
       <a href="/comidas" class="dash-card-link">PLANIFICAR →</a>
     </div>
 
-    <!-- SCORES ROW -->
-    <div class="dash-card dash-card-scores">
+    <!-- WEIGHT CARD -->
+    <div class="dash-card dash-card-weight">
       <div class="dash-card-header">
-        <div class="dash-card-label">{monthLabel}</div>
-        <a href="/limpieza" class="dash-card-link">VER LIMPIEZA →</a>
+        <div class="dash-card-label">MI PESO</div>
+        <a href="/peso" class="dash-card-link">VER PROGRESO →</a>
       </div>
-      <div class="dash-scores-row">
-        {memberProfiles.map((p) => {
-          const isMe = p.id === user.id;
-          const pts = scores[p.id] || 0;
-          return (
-            <div class={`dash-score-block ${isMe ? 'dash-score-mine' : ''}`}>
-              {(p as any).avatar_url ? (
-                <img src={(p as any).avatar_url} alt="" width="20" height="20" class="dash-score-avatar" />
-              ) : (
-                <span class="dash-score-avatar-letter">{((p as any).display_name || '?')[0]}</span>
-              )}
-              <span class="dash-score-value">{pts}</span>
-              <span class="dash-score-unit">PTS</span>
-              <span class="dash-score-name">{(p as any).display_name.split(' ')[0]}</span>
-            </div>
-          );
-        })}
-      </div>
-      {totalPoints > 0 && (
-        <div class="dash-comparison-bar">
-          {compSegs.map((seg) =>
-            seg.isGap
-              ? <div class="dash-bar-gap" />
-              : <div class="dash-bar-seg dash-bar-seg-on" style={`background: ${seg.color};`} />
-          )}
+      {latestWeight ? (
+        <div class="dash-weight-hero">
+          <span class="dash-weight-value">{latestWeight.toFixed(1)}</span>
+          <span class="dash-weight-unit">KG</span>
         </div>
+      ) : (
+        <div class="dash-empty-msg">[SIN REGISTROS DE PESO]</div>
       )}
+      <div class="dash-weight-today">
+        <span class={`dash-weight-check ${todayHasMorning ? 'dash-weight-done' : ''}`}>☀ {todayHasMorning ? '✓' : '—'}</span>
+        <span class={`dash-weight-check ${todayHasNight ? 'dash-weight-done' : ''}`}>☾ {todayHasNight ? '✓' : '—'}</span>
+      </div>
     </div>
 
-    <!-- ACTIVITY ISLAND -->
-    <DashboardActivity
-      client:visible
-      choreLogs={choreLogsSerialized}
-      expenseLogs={expenseLogsSerialized}
-    />
+    <!-- RECENT EXPENSES -->
+    <div class="dash-card">
+      <div class="dash-card-header">
+        <div class="dash-card-label">GASTOS RECIENTES</div>
+        <a href="/finanzas" class="dash-card-link">VER TODO →</a>
+      </div>
+      <div class="dash-expense-list">
+        {expenseLogsSerialized.length === 0 && (
+          <p class="dash-empty-msg">[SIN GASTOS RECIENTES]</p>
+        )}
+        {expenseLogsSerialized.slice(0, 5).map((exp: any) => (
+          <div class="dash-expense-row">
+            <div class="dash-expense-info">
+              <span class="dash-expense-name">
+                {exp.items && exp.items.length > 0
+                  ? exp.items.map((it: any) => it.name).join(', ')
+                  : exp.description}
+              </span>
+              <span class="dash-expense-meta">{exp.userName} · {exp.date}</span>
+            </div>
+            <span class="dash-expense-amount">-{formatCLP(exp.amount)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
 
     <!-- QUICK ACTIONS -->
     <div class="dash-actions">
-      <a href="/limpieza" class="dash-card dash-card-action">
-        <span class="dash-action-icon">[check]</span>
-        <span class="dash-action-label">REGISTRAR TAREA</span>
+      <a href="/peso" class="dash-card dash-card-action">
+        <span class="dash-action-icon">[⚖]</span>
+        <span class="dash-action-label">REGISTRAR PESO</span>
         <span class="dash-action-arrow">→</span>
       </a>
       <a href="/finanzas" class="dash-card dash-card-action">
@@ -639,81 +616,93 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     -webkit-box-orient: vertical;
   }
 
-  /* Scores Row */
-  .dash-card-scores .dash-card-header {
-    margin-bottom: calc(-1 * var(--space-xs));
-  }
+  /* Scores Row — removed */
 
-  .dash-scores-row {
+  /* Weight Card */
+  .dash-weight-hero {
     display: flex;
-    gap: var(--space-3xl);
-    align-items: flex-end;
+    align-items: baseline;
+    gap: var(--space-xs);
   }
 
-  .dash-score-block {
+  .dash-weight-value {
+    font-family: var(--font-display);
+    font-size: var(--display-md);
+    color: var(--text-display);
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .dash-weight-unit {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--text-disabled);
+    letter-spacing: 0.1em;
+  }
+
+  .dash-weight-today {
+    display: flex;
+    gap: var(--space-lg);
+  }
+
+  .dash-weight-check {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--text-disabled);
+    letter-spacing: 0.04em;
+  }
+
+  .dash-weight-done {
+    color: var(--success);
+  }
+
+  /* Recent Expenses inline */
+  .dash-expense-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dash-expense-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dash-expense-row:last-child {
+    border-bottom: none;
+  }
+
+  .dash-expense-info {
     display: flex;
     flex-direction: column;
     gap: var(--space-2xs);
+    min-width: 0;
+    flex: 1;
   }
 
-  .dash-score-value {
-    font-family: var(--font-display);
-    font-size: var(--display-sm);
-    color: var(--text-secondary);
-    line-height: 1;
-    font-weight: 700;
+  .dash-expense-name {
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .dash-score-mine .dash-score-value {
-    font-size: var(--display-md);
-    color: var(--text-display);
-  }
-
-  .dash-score-unit {
+  .dash-expense-meta {
     font-family: var(--font-mono);
     font-size: 10px;
-    letter-spacing: 0.15em;
     color: var(--text-disabled);
+    letter-spacing: 0.04em;
   }
 
-  .dash-score-name {
+  .dash-expense-amount {
     font-family: var(--font-mono);
-    font-size: var(--caption);
-    letter-spacing: 0.06em;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-  }
-
-  .dash-score-mine .dash-score-name {
-    color: var(--text-primary);
-  }
-
-  .dash-score-avatar {
-    border-radius: 50%;
-    object-fit: cover;
-  }
-
-  .dash-score-avatar-letter {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--surface);
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-family: var(--font-mono);
-  }
-
-  .dash-comparison-bar {
-    display: flex;
-    gap: 3px;
-    align-items: center;
-  }
-
-  .dash-bar-gap {
-    width: 6px;
+    font-size: var(--body-sm);
+    font-weight: 700;
+    color: var(--accent);
     flex-shrink: 0;
   }
 
@@ -779,12 +768,6 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     }
     .dash-meals-grid {
       grid-template-columns: 1fr;
-    }
-    .dash-scores-row {
-      gap: var(--space-xl);
-    }
-    .dash-score-mine .dash-score-value {
-      font-size: var(--display-sm);
     }
     .dash-actions {
       grid-template-columns: 1fr;

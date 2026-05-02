@@ -11,53 +11,17 @@ if (!user || !accessToken) return Astro.redirect('/signin');
 const supabase = createAuthClient(accessToken);
 
 // Parallel fetch
-const [categoriesRes, rewardsRes, profilesRes] = await Promise.all([
-  supabase.from('chore_categories').select('*, chores(*)'),
-  supabase.from('rewards').select('*').order('points_cost'),
+const [profilesRes] = await Promise.all([
   supabase.from('profiles').select('*'),
 ]);
 
-const categories = categoriesRes.data;
-const rewards = rewardsRes.data;
 const profiles = profilesRes.data;
 // Handle form submissions
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const action = formData.get('action')?.toString();
 
-  if (action === 'add_chore') {
-    const name = formData.get('name')?.toString();
-    const points = formData.get('points')?.toString();
-    const categoryId = formData.get('category_id')?.toString();
-    if (name && points && categoryId) {
-      await supabase.from('chores').insert({
-        name,
-        points: parseInt(points),
-        category_id: categoryId,
-      });
-    }
-  } else if (action === 'delete_chore') {
-    const choreId = formData.get('chore_id')?.toString();
-    if (choreId) {
-      await supabase.from('chores').update({ is_active: false }).eq('id', choreId);
-    }
-  } else if (action === 'add_reward') {
-    const name = formData.get('name')?.toString();
-    const pointsCost = formData.get('points_cost')?.toString();
-    const description = formData.get('description')?.toString();
-    if (name && pointsCost) {
-      await supabase.from('rewards').insert({
-        name,
-        points_cost: parseInt(pointsCost),
-        description: description || null,
-      });
-    }
-  } else if (action === 'delete_reward') {
-    const rewardId = formData.get('reward_id')?.toString();
-    if (rewardId) {
-      await supabase.from('rewards').update({ is_active: false }).eq('id', rewardId);
-    }
-  } else if (action === 'update_profile') {
+  if (action === 'update_profile') {
     const displayName = formData.get('display_name')?.toString();
     if (displayName) {
       await supabase.from('profiles').update({ display_name: displayName }).eq('id', user.id);
@@ -98,87 +62,6 @@ const myProfile = profiles?.find(p => p.id === user.id);
       </Card>
     </section>
 
-    <!-- CHORES MANAGEMENT -->
-    <section class="config-section">
-      <span class="label">TAREAS DE LIMPIEZA</span>
-      
-      {categories?.map((cat: any) => (
-        <div class="category-block">
-          <span class="category-title">{cat.name}</span>
-          <div class="items-list">
-            {cat.chores?.filter((c: any) => c.is_active).map((chore: any) => (
-              <div class="item-row">
-                <div class="item-info">
-                  <span class="item-name">{chore.name}</span>
-                  <span class="item-points">{chore.points} PTS</span>
-                </div>
-                <form method="POST" class="delete-form">
-                  <input type="hidden" name="action" value="delete_chore" />
-                  <input type="hidden" name="chore_id" value={chore.id} />
-                  <button type="submit" class="delete-btn">×</button>
-                </form>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <!-- Add chore form -->
-      <Card padding="md">
-        <form method="POST" class="add-form">
-          <input type="hidden" name="action" value="add_chore" />
-          <span class="form-title">AGREGAR TAREA</span>
-          <div class="add-fields">
-            <Input label="Nombre" name="name" placeholder="Ej: Trapear" required={true} />
-            <Input label="Puntos" name="points" type="number" placeholder="3" required={true} />
-            <div class="input-group">
-              <label for="category_id" class="input-label">CATEGORÍA</label>
-              <select name="category_id" class="select-field" required>
-                {categories?.map((cat: any) => (
-                  <option value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <Button type="submit" variant="secondary">AGREGAR</Button>
-        </form>
-      </Card>
-    </section>
-
-    <!-- REWARDS MANAGEMENT -->
-    <section class="config-section">
-      <span class="label">PREMIOS</span>
-      
-      <div class="items-list">
-        {rewards?.filter((r: any) => r.is_active).map((reward: any) => (
-          <div class="item-row">
-            <div class="item-info">
-              <span class="item-name">{reward.name}</span>
-              <span class="item-points">{reward.points_cost} PTS</span>
-            </div>
-            <form method="POST" class="delete-form">
-              <input type="hidden" name="action" value="delete_reward" />
-              <input type="hidden" name="reward_id" value={reward.id} />
-              <button type="submit" class="delete-btn">×</button>
-            </form>
-          </div>
-        ))}
-      </div>
-
-      <Card padding="md">
-        <form method="POST" class="add-form">
-          <input type="hidden" name="action" value="add_reward" />
-          <span class="form-title">AGREGAR PREMIO</span>
-          <div class="add-fields">
-            <Input label="Nombre" name="name" placeholder="Ej: Cena especial" required={true} />
-            <Input label="Costo en puntos" name="points_cost" type="number" placeholder="25" required={true} />
-            <Input label="Descripción (opcional)" name="description" placeholder="Detalles del premio" />
-          </div>
-          <Button type="submit" variant="secondary">AGREGAR</Button>
-        </form>
-      </Card>
-    </section>
-
     <!-- THEME -->
     <section class="config-section">
       <span class="label">APARIENCIA</span>
@@ -189,6 +72,22 @@ const myProfile = profiles?.find(p => p.id === user.id);
             <span class="toggle-track">
               <span class="toggle-thumb"></span>
             </span>
+          </button>
+        </div>
+      </Card>
+    </section>
+
+    <!-- NOTIFICATIONS -->
+    <section class="config-section">
+      <span class="label">NOTIFICACIONES</span>
+      <Card padding="md">
+        <div class="notification-row">
+          <div class="notification-copy">
+            <span class="notification-title">Recordatorios PWA</span>
+            <span id="config-push-status" class="caption">Revisando estado...</span>
+          </div>
+          <button id="config-push-enable" class="notification-btn" type="button">
+            ACTIVAR
           </button>
         </div>
       </Card>
@@ -219,6 +118,50 @@ const myProfile = profiles?.find(p => p.id === user.id);
     html.setAttribute('data-theme', next);
     localStorage.setItem('tct-theme', next);
     updateToggle();
+  });
+
+  const pushBtn = document.getElementById('config-push-enable') as HTMLButtonElement | null;
+  const pushStatus = document.getElementById('config-push-status');
+
+  function updatePushStatus(message?: string) {
+    if (!pushStatus || !pushBtn) return;
+    if (!('Notification' in window) || !('PushManager' in window)) {
+      pushStatus.textContent = 'Este dispositivo no soporta Web Push';
+      pushBtn.disabled = true;
+      return;
+    }
+    if (message) {
+      pushStatus.textContent = message;
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      pushStatus.textContent = 'Activas para este dispositivo';
+      pushBtn.textContent = 'REACTIVAR';
+    } else if (Notification.permission === 'denied') {
+      pushStatus.textContent = 'Bloqueadas en el navegador';
+      pushBtn.disabled = true;
+    } else {
+      pushStatus.textContent = 'Pendientes de activar';
+    }
+  }
+
+  updatePushStatus();
+
+  pushBtn?.addEventListener('click', async () => {
+    pushBtn.disabled = true;
+    updatePushStatus('Activando...');
+    const result = await (window as any).tctEnablePush?.();
+    if (result?.ok) {
+      updatePushStatus('Activas para este dispositivo');
+      pushBtn.textContent = 'REACTIVAR';
+    } else if (result?.status === 'denied') {
+      updatePushStatus('Bloqueadas en el navegador');
+    } else if (result?.status === 'unsupported') {
+      updatePushStatus('Este dispositivo no soporta Web Push');
+    } else {
+      updatePushStatus('No se pudo activar. Intenta nuevamente.');
+    }
+    pushBtn.disabled = false;
   });
 </script>
 
@@ -449,5 +392,50 @@ const myProfile = profiles?.find(p => p.id === user.id);
     left: 2px;
     transition: transform var(--duration-normal) var(--ease-out),
                 background var(--duration-normal) var(--ease-out);
+  }
+
+  /* Notifications */
+  .notification-row {
+    align-items: center;
+    display: flex;
+    gap: var(--space-md);
+    justify-content: space-between;
+  }
+
+  .notification-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .notification-title {
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+  }
+
+  .notification-btn {
+    background: transparent;
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-technical);
+    color: var(--text-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    padding: var(--space-xs) var(--space-md);
+    transition: border-color var(--duration-micro) var(--ease-out),
+                color var(--duration-micro) var(--ease-out);
+  }
+
+  .notification-btn:hover:not(:disabled) {
+    border-color: var(--text-display);
+    color: var(--text-display);
+  }
+
+  .notification-btn:disabled {
+    cursor: default;
+    opacity: 0.45;
   }
 </style>

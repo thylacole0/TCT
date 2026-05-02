@@ -2,7 +2,13 @@ import { defineMiddleware } from "astro:middleware";
 import { getSession } from "./lib/auth";
 import { createAuthClient } from "./lib/supabase";
 
-const PUBLIC_ROUTES = ["/signin", "/api/auth/signin", "/api/auth/callback", "/api/auth/signout"];
+const PUBLIC_ROUTES = [
+  "/signin",
+  "/api/auth/signin",
+  "/api/auth/callback",
+  "/api/auth/signout",
+  "/api/push/notify",
+];
 
 // Routes that need the user role (admin guard or read-only UI)
 const ROLE_ROUTES = ["/api/", "/finanzas"];
@@ -54,5 +60,12 @@ export const onRequest = defineMiddleware(async ({ cookies, url, redirect, local
     locals.userRole = null;
   }
 
-  return next();
+  const response = await next();
+
+  // Prevent browser/CDN from caching SSR pages — ensures fresh data on every navigation
+  if (response.headers.get('content-type')?.includes('text/html')) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  }
+
+  return response;
 });

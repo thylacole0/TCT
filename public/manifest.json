@@ -2,7 +2,7 @@
   "id": "/",
   "name": "TCT — Tu Casa Tracker",
   "short_name": "TCT",
-  "description": "Gestiona la limpieza y finanzas de tu hogar",
+  "description": "Gestiona tu peso, finanzas y comidas del hogar",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

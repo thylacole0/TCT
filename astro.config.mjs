@@ -11,4 +11,7 @@ export default defineConfig({
   adapter: vercel(),
 
   integrations: [preact()],
+
+  // Disable prefetch — pages have dynamic data that goes stale quickly
+  prefetch: false,
 });

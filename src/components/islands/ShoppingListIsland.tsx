@@ -182,6 +182,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
           body: JSON.stringify({
             category,
             budget_week_id: budgetWeekId,
+            budget_type: listType,
             items: [
               {
                 name: item.name,

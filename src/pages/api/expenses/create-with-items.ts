@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
 import { todayChile } from "../../../lib/dates";
+import { resolveBudgetForExpense } from "../../../lib/budgets";
 
 export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
@@ -15,11 +16,18 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     const body = await request.json();
-    const { category, expense_date, budget_week_id, items } = body;
+    const { category, expense_date, budget_week_id, budget_type, items } = body;
+    const expenseDate = expense_date || todayChile();
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return new Response("items array required", { status: 400 });
     }
+
+    const resolvedBudget = await resolveBudgetForExpense(supabase, {
+      budgetWeekId: budget_week_id || null,
+      budgetType: budget_type || null,
+      expenseDate,
+    });
 
     // Calculate total from items
     const total = items.reduce(
@@ -31,12 +39,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const { data: expense, error: expenseError } = await supabase
       .from("expenses")
       .insert({
-        budget_week_id: budget_week_id || null,
+        budget_week_id: resolvedBudget.budgetWeekId,
+        budget_type: resolvedBudget.budgetType,
         user_id: user.id,
         amount: total,
         description: `${items.length} producto${items.length > 1 ? "s" : ""}`,
         category: category || "Supermercado",
-        expense_date: expense_date || todayChile(),
+        expense_date: expenseDate,
       })
       .select("id")
       .single();

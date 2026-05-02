@@ -65,12 +65,14 @@ export async function getSession(cookies: AstroCookies) {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
     });
     cookies.set("sb-refresh-token", data.session.refresh_token, {
       path: "/",
       httpOnly: true,
       secure: true,
       sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
     });
   }
 

@@ -23,6 +23,7 @@ interface ExpenseItem {
 
 type BudgetType = "comida" | "aseo";
 type ViewMode = "resumen" | "comida" | "aseo";
+type CategoriesByType = Record<BudgetType, string[]>;
 
 interface BudgetData {
   budgetWeekId?: string;
@@ -57,6 +58,10 @@ function formatDateISO(d: Date): string {
 
 function generateId() {
   return Math.random().toString(36).substring(2, 9);
+}
+
+function budgetTypeLabel(type: BudgetType) {
+  return type === "aseo" ? "ASEO" : "COMIDA";
 }
 
 function MiniAvatar({ url, name, size = 16 }: { url?: string; name?: string; size?: number }) {
@@ -130,6 +135,10 @@ function PieChart({ data, size = 140 }: { data: Array<[string, number]>; size?: 
 // ─── Main Component ───
 export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isReadOnly }: Props) {
   const [view, setView] = useState<ViewMode>("resumen");
+  const categoriesByType: CategoriesByType = {
+    comida: comida.categories,
+    aseo: aseo.categories,
+  };
 
   // Tag expenses with their budget type
   const comidaExpenses = comida.expenses.map(e => ({ ...e, budgetType: "comida" as const }));
@@ -192,7 +201,12 @@ export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isRea
 
       {/* Expense list — always mounted, never unmounts on tab switch */}
       <div class="bi-expense-section">
-        <FilterableExpenseList expenses={allExpenses} viewFilter={defaultExpenseFilter} />
+        <FilterableExpenseList
+          expenses={allExpenses}
+          viewFilter={defaultExpenseFilter}
+          categoriesByType={categoriesByType}
+          isReadOnly={isReadOnly}
+        />
       </div>
     </div>
   );
@@ -437,6 +451,7 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
           <span class="fh-label">REGISTRAR GASTO</span>
           <ExpenseForm
             budgetWeekId={budgetWeekId}
+            budgetType={budgetType}
             categories={categories}
             onSuccess={() => {
               setTimeout(() => { window.location.reload(); }, 600);
@@ -459,7 +474,17 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
 }
 
 // ─── Expense List ───
-function ExpenseList({ expenses }: { expenses: Expense[] }) {
+function ExpenseList({
+  expenses,
+  categoriesByType,
+  isReadOnly,
+}: {
+  expenses: Expense[];
+  categoriesByType: CategoriesByType;
+  isReadOnly?: boolean;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   return (
     <div class="fh-expense-list">
       {expenses.map((exp) => {
@@ -469,39 +494,58 @@ function ExpenseList({ expenses }: { expenses: Expense[] }) {
         });
         const hasItems = exp.items && exp.items.length > 0;
         const typeTag = exp.budgetType === "aseo" ? "ASEO" : "COMIDA";
+        const isEditing = editingId === exp.id;
         return (
-          <div class="fh-expense-row" key={exp.id}>
-            <div class="fh-expense-info">
-              <span class="fh-caption" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <MiniAvatar url={exp.user_avatar} name={exp.user_name} />
-                {exp.user_name} · {date} · {exp.category}
-                {exp.budgetType && (
-                  <span class={`bi-type-tag bi-type-${exp.budgetType}`}>{typeTag}</span>
+          <div class="fh-expense-entry" key={exp.id}>
+            <div class="fh-expense-row">
+              <div class="fh-expense-info">
+                <span class="fh-caption" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <MiniAvatar url={exp.user_avatar} name={exp.user_name} />
+                  {exp.user_name} · {date} · {exp.category}
+                  {exp.budgetType && (
+                    <span class={`bi-type-tag bi-type-${exp.budgetType}`}>{typeTag}</span>
+                  )}
+                </span>
+                {hasItems ? (
+                  <div class="fh-expense-items">
+                    {exp.items!.map((it, i) => (
+                      <div class="fh-expense-item" key={i}>
+                        <span class="fh-expense-item-name">
+                          {it.quantity > 1 ? `${it.quantity}× ` : ""}{it.name}
+                        </span>
+                        <span class="fh-expense-item-price">
+                          {formatCLP(it.quantity * it.unit_price)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span class="fh-expense-desc">{exp.description}</span>
                 )}
-              </span>
-              {hasItems ? (
-                <div class="fh-expense-items">
-                  {exp.items!.map((it, i) => (
-                    <div class="fh-expense-item" key={i}>
-                      <span class="fh-expense-item-name">
-                        {it.quantity > 1 ? `${it.quantity}× ` : ""}{it.name}
-                      </span>
-                      <span class="fh-expense-item-price">
-                        {formatCLP(it.quantity * it.unit_price)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <span class="fh-expense-desc">{exp.description}</span>
-              )}
+              </div>
+              <div class="fh-expense-total">
+                <span class="fh-expense-amount">-{formatCLP(exp.amount)}</span>
+                {hasItems && exp.items!.length > 1 && (
+                  <span class="fh-expense-total-label">TOTAL</span>
+                )}
+                {!isReadOnly && exp.budgetType && (
+                  <button
+                    type="button"
+                    class={`fh-expense-edit ${isEditing ? "fh-expense-edit-active" : ""}`}
+                    onClick={() => setEditingId(isEditing ? null : exp.id)}
+                  >
+                    {isEditing ? "CERRAR" : "EDITAR"}
+                  </button>
+                )}
+              </div>
             </div>
-            <div class="fh-expense-total">
-              <span class="fh-expense-amount">-{formatCLP(exp.amount)}</span>
-              {hasItems && exp.items!.length > 1 && (
-                <span class="fh-expense-total-label">TOTAL</span>
-              )}
-            </div>
+            {isEditing && exp.budgetType && (
+              <ExpenseEditPanel
+                expense={exp as Expense & { budgetType: BudgetType }}
+                categoriesByType={categoriesByType}
+                onCancel={() => setEditingId(null)}
+              />
+            )}
           </div>
         );
       })}
@@ -514,10 +558,174 @@ function ExpenseList({ expenses }: { expenses: Expense[] }) {
   );
 }
 
+function ExpenseEditPanel({
+  expense,
+  categoriesByType,
+  onCancel,
+}: {
+  expense: Expense & { budgetType: BudgetType };
+  categoriesByType: CategoriesByType;
+  onCancel: () => void;
+}) {
+  const [budgetType, setBudgetType] = useState<BudgetType>(expense.budgetType);
+  const [category, setCategory] = useState(expense.category);
+  const [expenseDate, setExpenseDate] = useState(expense.expense_date);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  const options = categoriesByType[budgetType] || [];
+  const typeChanged = budgetType !== expense.budgetType;
+
+  const changeBudgetType = (nextType: BudgetType) => {
+    setBudgetType(nextType);
+    const nextOptions = categoriesByType[nextType] || [];
+    if (nextOptions.length > 0 && !nextOptions.includes(category)) {
+      setCategory(nextOptions[0]);
+    }
+  };
+
+  const saveExpense = async () => {
+    if (typeChanged) {
+      const confirmed = window.confirm(
+        `Esto quitará el gasto de ${budgetTypeLabel(expense.budgetType)} y lo moverá a ${budgetTypeLabel(budgetType)}. ¿Continuar?`
+      );
+      if (!confirmed) return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/expenses/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expense_id: expense.id,
+          budget_type: budgetType,
+          category,
+          expense_date: expenseDate,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message || "Error al actualizar");
+      setSaving(false);
+    }
+  };
+
+  const deleteExpense = async () => {
+    const confirmed = window.confirm(
+      `Esto eliminará el gasto de ${budgetTypeLabel(expense.budgetType)}. Esta acción no se puede deshacer. ¿Continuar?`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/expenses/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expense_id: expense.id }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message || "Error al eliminar");
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div class="fh-expense-edit-panel">
+      <div class="fh-expense-edit-grid">
+        <div class="fh-expense-edit-field">
+          <span class="fh-expense-edit-label">TIPO</span>
+          <div class="fh-expense-edit-segments">
+            {(["comida", "aseo"] as BudgetType[]).map((type) => (
+              <button
+                type="button"
+                class={`fh-expense-edit-segment ${budgetType === type ? "fh-expense-edit-segment-active" : ""}`}
+                onClick={() => changeBudgetType(type)}
+              >
+                {budgetTypeLabel(type)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div class="fh-expense-edit-field">
+          <span class="fh-expense-edit-label">CATEGORÍA</span>
+          <div class="fh-expense-edit-tags">
+            {options.map((option) => (
+              <button
+                type="button"
+                class={`fh-expense-edit-tag ${category === option ? "fh-expense-edit-tag-active" : ""}`}
+                onClick={() => setCategory(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div class="fh-expense-edit-field">
+          <span class="fh-expense-edit-label">FECHA</span>
+          <input
+            type="date"
+            class="fh-expense-edit-date"
+            value={expenseDate}
+            onInput={(event) => setExpenseDate((event.target as HTMLInputElement).value)}
+          />
+        </div>
+      </div>
+
+      {typeChanged && (
+        <p class="fh-expense-edit-warning">
+          Se moverá desde {budgetTypeLabel(expense.budgetType)} hacia {budgetTypeLabel(budgetType)} al guardar.
+        </p>
+      )}
+      {error && <p class="fh-expense-edit-error">[ERROR: {error}]</p>}
+
+      <div class="fh-expense-edit-actions">
+        <button type="button" class="fh-expense-edit-cancel" onClick={onCancel} disabled={saving || deleting}>
+          CANCELAR
+        </button>
+        <button type="button" class="fh-expense-edit-delete" onClick={deleteExpense} disabled={saving || deleting}>
+          {deleting ? "ELIMINANDO..." : "ELIMINAR"}
+        </button>
+        <button type="button" class="fh-expense-edit-save" onClick={saveExpense} disabled={saving || deleting || !category || !expenseDate}>
+          {saving ? "GUARDANDO..." : "GUARDAR"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Filterable Expense List (TODOS / COMIDA / ASEO) ───
 type ExpenseFilter = "todos" | "comida" | "aseo";
 
-function FilterableExpenseList({ expenses, viewFilter = "todos" }: { expenses: Expense[]; viewFilter?: ExpenseFilter }) {
+function FilterableExpenseList({
+  expenses,
+  viewFilter = "todos",
+  categoriesByType,
+  isReadOnly,
+}: {
+  expenses: Expense[];
+  viewFilter?: ExpenseFilter;
+  categoriesByType: CategoriesByType;
+  isReadOnly?: boolean;
+}) {
   const [filter, setFilter] = useState<ExpenseFilter>(viewFilter);
 
   // Sync filter when the parent view changes
@@ -563,7 +771,7 @@ function FilterableExpenseList({ expenses, viewFilter = "todos" }: { expenses: E
           ASEO <span class="bi-filter-count">{counts.aseo}</span>
         </button>
       </div>
-      <ExpenseList expenses={filtered} />
+      <ExpenseList expenses={filtered} categoriesByType={categoriesByType} isReadOnly={isReadOnly} />
     </div>
   );
 }
@@ -571,10 +779,12 @@ function FilterableExpenseList({ expenses, viewFilter = "todos" }: { expenses: E
 // ─── Expense Form ───
 function ExpenseForm({
   budgetWeekId,
+  budgetType,
   categories,
   onSuccess,
 }: {
   budgetWeekId?: string;
+  budgetType: BudgetType;
   categories: string[];
   onSuccess: () => void;
 }) {
@@ -627,6 +837,7 @@ function ExpenseForm({
           category,
           expense_date: expenseDate,
           budget_week_id: budgetWeekId || null,
+          budget_type: budgetType,
           items: validItems.map((i) => ({
             name: i.name,
             quantity: i.quantity,
