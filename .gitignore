@@ -28,6 +28,8 @@ pnpm-debug.log*
 .agents/
 .claude/
 .github/
+.opencode/
+.docs
 
 # vercel
 .vercel/
