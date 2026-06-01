@@ -508,23 +508,25 @@ function AiMealSuggestionPanel({
               const suggestion = recipeToSuggestion(recipe, recipeMeal?.name || "Comida");
               return (
                 <div class="ai-saved-item" key={recipe.id}>
-                  <div>
+                  <div class="ai-saved-content">
                     <span class="ai-saved-title">{recipe.title}</span>
                     <span class="ai-saved-meta">
                       {recipeMeal?.name || "Comida"} · {recipe.calories_per_serving || "--"} kcal/porción · proteína {formatMacro(recipe.protein_g)} g
                     </span>
                   </div>
-                  <button type="button" onClick={() => openPlanSuggestion(suggestion, recipeMeal?.id || mealTypeId)}>
-                    AGENDAR
-                  </button>
-                  <button type="button" onClick={() => addMissingToList(suggestion, recipe.id)}>
-                    FALTANTES
-                  </button>
-                  {recipe.can_delete && (
-                    <button type="button" onClick={() => deleteRecipe(recipe)} disabled={deletingRecipeId === recipe.id}>
-                      {deletingRecipeId === recipe.id ? "..." : "QUITAR"}
+                  <div class="ai-saved-actions">
+                    <button type="button" onClick={() => openPlanSuggestion(suggestion, recipeMeal?.id || mealTypeId)}>
+                      AGENDAR
                     </button>
-                  )}
+                    <button type="button" onClick={() => addMissingToList(suggestion, recipe.id)}>
+                      FALTANTES
+                    </button>
+                    {recipe.can_delete && (
+                      <button type="button" onClick={() => deleteRecipe(recipe)} disabled={deletingRecipeId === recipe.id}>
+                        {deletingRecipeId === recipe.id ? "..." : "QUITAR"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

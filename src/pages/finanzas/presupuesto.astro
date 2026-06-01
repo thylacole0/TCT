@@ -4,7 +4,7 @@ import Input from '../../components/Input.astro';
 import Button from '../../components/Button.astro';
 import { createAuthClient } from '../../lib/supabase';
 import { getMondayChile, getMonthStartChile, formatDateCL } from '../../lib/dates';
-import { linkExistingExpensesToBudget } from '../../lib/budgets';
+import { getBudgetPeriodEnd, getBudgetPeriodStartForDate, linkExistingExpensesToBudget } from '../../lib/budgets';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -17,17 +17,30 @@ const budgetLabel = budgetType === 'aseo' ? 'ASEO' : 'COMIDA';
 const backLink = '/finanzas';
 const isMonthly = budgetType === 'aseo';
 
-// Period start: weekly for comida, monthly for aseo
-const periodStart = isMonthly ? getMonthStartChile() : getMondayChile();
-const periodStartStr = formatDateCL(periodStart);
+const currentPeriodStart = isMonthly ? getMonthStartChile() : getMondayChile();
+const currentPeriodStartStr = formatDateCL(currentPeriodStart);
+const selectedDateStr = normalizeDateInput(Astro.url.searchParams.get('date') || Astro.url.searchParams.get('period_start') || currentPeriodStartStr);
+const periodStartStr = getBudgetPeriodStartForDate(budgetType, selectedDateStr);
+const periodStart = new Date(`${periodStartStr}T12:00:00`);
+const periodEndStr = getBudgetPeriodEnd(budgetType, periodStartStr);
+
+const previousPeriod = new Date(periodStart);
+if (isMonthly) previousPeriod.setMonth(previousPeriod.getMonth() - 1);
+else previousPeriod.setDate(previousPeriod.getDate() - 7);
+const nextPeriod = new Date(periodStart);
+if (isMonthly) nextPeriod.setMonth(nextPeriod.getMonth() + 1);
+else nextPeriod.setDate(nextPeriod.getDate() + 7);
+
+const previousPeriodHref = `/finanzas/presupuesto?type=${budgetType}&date=${formatDateCL(previousPeriod)}`;
+const nextPeriodHref = `/finanzas/presupuesto?type=${budgetType}&date=${formatDateCL(nextPeriod)}`;
+const saved = Astro.url.searchParams.get('saved') === '1';
 
 // Labels
 let periodLabel: string;
 if (isMonthly) {
   periodLabel = periodStart.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
 } else {
-  const weekEnd = new Date(periodStart);
-  weekEnd.setDate(periodStart.getDate() + 6);
+  const weekEnd = new Date(`${periodEndStr}T12:00:00`);
   periodLabel = `${periodStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
 }
 
@@ -37,7 +50,7 @@ const { data: currentBudget } = await supabase
   .select('*')
   .eq('week_start', periodStartStr)
   .eq('budget_type', budgetType)
-  .single();
+  .maybeSingle();
 
 const existingAmount = currentBudget ? Number(currentBudget.budget_amount) : '';
 
@@ -46,6 +59,10 @@ let errorMsg = '';
 if (Astro.request.method === 'POST') {
   const formData = await Astro.request.formData();
   const budgetAmount = formData.get('budget_amount')?.toString();
+  const targetPeriodStart = getBudgetPeriodStartForDate(
+    budgetType,
+    normalizeDateInput(formData.get('period_start')?.toString() || periodStartStr)
+  );
 
   if (!budgetAmount || parseFloat(budgetAmount) <= 0) {
     errorMsg = 'El monto debe ser mayor a 0';
@@ -54,7 +71,7 @@ if (Astro.request.method === 'POST') {
       .from('budget_weeks')
       .upsert(
         {
-          week_start: periodStartStr,
+          week_start: targetPeriodStart,
           budget_amount: parseFloat(budgetAmount),
           budget_type: budgetType,
           created_by: user.id,
@@ -71,12 +88,18 @@ if (Astro.request.method === 'POST') {
         await linkExistingExpensesToBudget(supabase, {
           budgetId: budget.id,
           budgetType,
-          periodStart: periodStartStr,
+          periodStart: targetPeriodStart,
         });
       }
-      return Astro.redirect(backLink);
+      if (targetPeriodStart === currentPeriodStartStr) return Astro.redirect(backLink);
+      return Astro.redirect(`/finanzas/presupuesto?type=${budgetType}&date=${targetPeriodStart}&saved=1`);
     }
   }
+}
+
+function normalizeDateInput(value: string | null | undefined): string {
+  if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return currentPeriodStartStr;
 }
 ---
 
@@ -89,11 +112,30 @@ if (Astro.request.method === 'POST') {
     <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO {budgetLabel}</h2>
     <span class="label">{periodLabel}</span>
 
+    <div class="period-tools">
+      <a href={previousPeriodHref} class="period-step">{isMonthly ? '< MES' : '< SEMANA'}</a>
+      <form method="GET" class="period-form">
+        <input type="hidden" name="type" value={budgetType} />
+        <label class="period-field">
+          <span>{isMonthly ? 'MES' : 'SEMANA'}</span>
+          <input type="date" name="date" value={periodStartStr} />
+        </label>
+        <button type="submit" class="period-submit">VER</button>
+      </form>
+      <a href={nextPeriodHref} class="period-step">{isMonthly ? 'MES >' : 'SEMANA >'}</a>
+    </div>
+
     {errorMsg && (
       <div class="error-box">[ERROR: {errorMsg}]</div>
     )}
 
+    {saved && !errorMsg && (
+      <div class="success-box">[PRESUPUESTO ACTUALIZADO]</div>
+    )}
+
     <form method="POST" class="budget-form">
+      <input type="hidden" name="budget_type" value={budgetType} />
+      <input type="hidden" name="period_start" value={periodStartStr} />
       <Input 
         label={isMonthly ? "Presupuesto mensual (CLP)" : "Presupuesto semanal (CLP)"}
         name="budget_amount" 
@@ -157,6 +199,77 @@ if (Astro.request.method === 'POST') {
     border-radius: var(--radius-technical);
   }
 
+  .success-box {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    color: var(--success);
+    border: 1px solid var(--success);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-technical);
+  }
+
+  .period-tools {
+    align-items: center;
+    display: grid;
+    gap: var(--space-xs);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .period-step,
+  .period-submit {
+    align-items: center;
+    background: transparent;
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-pill);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: inline-flex;
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    justify-content: center;
+    letter-spacing: 0.06em;
+    min-height: 44px;
+    padding: 12px 14px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .period-form {
+    align-items: stretch;
+    display: grid;
+    gap: var(--space-xs);
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .period-field {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-technical);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    min-width: 0;
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .period-field span {
+    color: var(--text-disabled);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+  }
+
+  .period-field input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    color-scheme: dark;
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    min-height: 24px;
+    outline: none;
+    width: 100%;
+  }
+
   .budget-form {
     display: flex;
     flex-direction: column;
@@ -171,5 +284,20 @@ if (Astro.request.method === 'POST') {
 
   .form-actions {
     padding-top: var(--space-md);
+  }
+
+  @media (max-width: 480px) {
+    .period-tools {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .period-form {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+
+    .period-step {
+      width: 100%;
+    }
   }
 </style>

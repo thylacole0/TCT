@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
-import { linkExistingExpensesToBudget } from "../../../lib/budgets";
+import { getBudgetPeriodStartForDate, linkExistingExpensesToBudget } from "../../../lib/budgets";
 
 export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
@@ -26,12 +26,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
     return new Response("budget_type must be comida or aseo", { status: 400 });
   }
 
-  // Upsert: if week+type already exists, update the amount
+  const periodStart = getBudgetPeriodStartForDate(budgetType as "comida" | "aseo", weekStart);
+
+  // Upsert: if period+type already exists, update the amount
   const { data: budget, error } = await supabase
     .from("budget_weeks")
     .upsert(
       {
-        week_start: weekStart,
+        week_start: periodStart,
         budget_amount: parseFloat(budgetAmount),
         budget_type: budgetType,
         created_by: user.id,
@@ -49,7 +51,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     await linkExistingExpensesToBudget(supabase, {
       budgetId: budget.id,
       budgetType,
-      periodStart: weekStart,
+      periodStart,
     });
   }
 
