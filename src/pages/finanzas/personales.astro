@@ -1,0 +1,31 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import FinanzasPersonalesIsland from '../../components/islands/FinanzasPersonalesIsland';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+---
+
+<Layout title="TCT — Finanzas Personales" currentPath="/finanzas">
+  <div class="fp-page-header">
+    <a href="/finanzas" class="back-link">← FINANZAS</a>
+  </div>
+  <FinanzasPersonalesIsland client:load />
+</Layout>
+
+<style>
+  .fp-page-header {
+    margin-bottom: var(--space-lg);
+  }
+  .back-link {
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .back-link:hover {
+    color: var(--text-display);
+  }
+</style>

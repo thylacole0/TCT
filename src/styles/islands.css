@@ -2919,3 +2919,172 @@
     font-size: var(--heading);
   }
 }
+
+/* ─── FINANZAS PERSONALES ISLAND ─── */
+
+.fp-month-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.fp-nav-btn {
+  background: transparent;
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  line-height: 1;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  transition: border-color var(--duration-micro) var(--ease-out),
+              color var(--duration-micro) var(--ease-out);
+}
+
+.fp-nav-btn:hover {
+  border-color: var(--text-display);
+  color: var(--text-display);
+}
+
+.fp-month-label {
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  color: var(--text-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  min-width: 140px;
+  text-align: center;
+}
+
+.fp-merchant-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.fp-merchant-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.fp-merchant-header {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) 0;
+  transition: background var(--duration-micro) var(--ease-out);
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  text-align: left;
+}
+
+.fp-merchant-header:hover {
+  background: var(--surface-raised);
+  margin: 0 calc(-1 * var(--space-md));
+  padding: var(--space-md) var(--space-md);
+  width: calc(100% + 2 * var(--space-md));
+}
+
+.fp-merchant-header:active {
+  background: var(--border);
+}
+
+.fp-merchant-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+  flex: 1;
+}
+
+.fp-merchant-name {
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-merchant-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-disabled);
+  letter-spacing: 0.06em;
+}
+
+.fp-merchant-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.fp-merchant-total {
+  font-family: var(--font-mono);
+  font-size: var(--body);
+  font-weight: 700;
+  color: var(--text-display);
+}
+
+.fp-chevron {
+  color: var(--text-disabled);
+  font-size: 10px;
+}
+
+.fp-transactions {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 var(--space-md) 0;
+  gap: var(--space-2xs);
+}
+
+.fp-transaction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-sm);
+  border-left: 1px solid var(--border-visible);
+  margin-left: var(--space-sm);
+}
+
+.fp-tx-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fp-tx-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-disabled);
+  letter-spacing: 0.06em;
+}
+
+.fp-tx-desc {
+  font-family: var(--font-body);
+  font-size: var(--body-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-tx-amount {
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  flex-shrink: 0;
+  margin-left: var(--space-md);
+}
