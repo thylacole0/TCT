@@ -6,7 +6,7 @@ const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
 ---
 
-<Layout title="TCT — Finanzas Personales" currentPath="/finanzas">
+<Layout title="TCT — Finanzas Personales" currentPath="/finanzas/personales">
   <div class="fp-page-header">
     <a href="/finanzas" class="back-link">← FINANZAS</a>
   </div>

@@ -34,3 +34,5 @@ pnpm-debug.log*
 # vercel
 .vercel/
 .vercel
+.supabase/
+.supabase/migrations/

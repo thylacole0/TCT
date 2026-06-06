@@ -127,4 +127,4 @@ $$;
 -- Grant execute to anon role so the Python script can call this with the anon key
 revoke all on function public.classify_pending_expense(uuid, text, numeric, text, text, text, date, text) from public;
 revoke all on function public.classify_pending_expense(uuid, text, numeric, text, text, text, date, text) from anon;
-grant execute on function public.classify_pending_expense(uuid, text, numeric, text, text, text, text, date, text) to anon;
+grant execute on function public.classify_pending_expense(uuid, text, numeric, text, text, text, date, text) to anon;
