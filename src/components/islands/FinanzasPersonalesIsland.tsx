@@ -75,6 +75,8 @@ const CATEGORY_ACCENTS: Record<string, string> = {
   Supermercado: "#4A9E5C",
   Transporte: "#5B9BF6",
   "Gustos personales": "#D4A843",
+  "Gastos del hogar": "#FF8C42",
+  Suscripciones: "#9B59B6",
   Otros: "#999999",
 };
 

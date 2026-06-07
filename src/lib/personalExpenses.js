@@ -1,49 +1,42 @@
-export const CATEGORIES = ['Delivery', 'Supermercado', 'Transporte', 'Gustos personales', 'Otros'];
+export const CATEGORIES = ['Delivery', 'Supermercado', 'Transporte', 'Gustos personales', 'Gastos del hogar', 'Suscripciones', 'Otros'];
 
 export function normalizePersonalExpenseCategory(category) {
   return CATEGORIES.includes(category) ? category : 'Otros';
 }
 
 export function formatExpenseTime(expenseTime, createdAt) {
-  if (expenseTime && /^\d{2}:\d{2}/.test(expenseTime)) {
-    return expenseTime.slice(0, 5);
+  if (expenseTime) {
+    const parts = expenseTime.split(':');
+    return parts[0] + ':' + parts[1];
   }
-  if (!createdAt) return null;
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleTimeString('es-CL', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'America/Santiago',
-  });
+  if (createdAt) {
+    try {
+      const d = new Date(createdAt);
+      const s = d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Santiago' });
+      const pre = typeof s === 'string' ? s : d.toLocaleString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
+      return pre;
+    } catch { return null; }
+  }
+  return null;
 }
 
 export function groupPersonalExpensesByCategory(rows) {
-  const groups = new Map(
-    CATEGORIES.map((category) => [category, { category, total: 0, count: 0, transactions: [] }])
-  );
+  const groups = {};
+  for (const cat of CATEGORIES) groups[cat] = { category: cat, total: 0, count: 0, transactions: [] };
 
-  for (const row of rows || []) {
-    const category = normalizePersonalExpenseCategory(row.category);
-    const group = groups.get(category);
-    const transaction = {
+  for (const row of rows) {
+    const cat = normalizePersonalExpenseCategory(row.category);
+    groups[cat].transactions.push({
       ...row,
-      category,
       display_time: formatExpenseTime(row.expense_time, row.created_at),
-    };
-    group.total += Number(row.amount || 0);
-    group.count += 1;
-    group.transactions.push(transaction);
-  }
-
-  for (const group of groups.values()) {
-    group.transactions.sort((a, b) => {
-      const ad = `${a.expense_date || ''} ${a.expense_time || ''} ${a.created_at || ''}`;
-      const bd = `${b.expense_date || ''} ${b.expense_time || ''} ${b.created_at || ''}`;
-      return bd.localeCompare(ad);
     });
+    groups[cat].total += Number(row.amount) || 0;
+    groups[cat].count += 1;
   }
 
-  return Array.from(groups.values());
+  for (const cat of CATEGORIES) {
+    groups[cat].transactions.sort((a, b) => new Date(b.expense_date + 'T' + (b.expense_time || '00:00')) - new Date(a.expense_date + 'T' + (a.expense_time || '00:00')));
+  }
+
+  return CATEGORIES.map((cat) => groups[cat]);
 }
