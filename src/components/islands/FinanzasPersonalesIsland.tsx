@@ -30,6 +30,17 @@ interface ByCategoryResponse {
   to: string;
 }
 
+const INCOME_KEY = "tct_personal_monthly_income";
+const CATEGORY_COLORS: Record<string, string> = {
+  Delivery: "#D71921",
+  Supermercado: "#4A9E5C",
+  Transporte: "#5B9BF6",
+  "Gustos personales": "#D4A843",
+  "Gastos del hogar": "#FF8C42",
+  Suscripciones: "#9B59B6",
+  Otros: "#999999",
+};
+
 function formatCLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
@@ -54,47 +65,21 @@ function monthBounds(date: Date) {
 
 function SpendingBar({ spent, total }: { spent: number; total: number }) {
   const pct = total > 0 ? Math.min((spent / total) * 100, 100) : 0;
+  const segments = 10;
   return (
-    <div class="fh-bar-track" style={{ marginTop: 0 }}>
-      {Array.from({ length: 10 }, (_, i) => {
-        const segPct = ((i + 1) / 10) * 100;
+    <div class="fh-bar-track" style={{ marginTop: 4 }}>
+      {Array.from({ length: segments }, (_, i) => {
+        const segPct = ((i + 1) / segments) * 100;
         const filled = segPct <= pct;
+        const warn = filled && pct > 75;
         return (
           <div
+            key={i}
             class={`fh-bar-seg ${filled ? "fh-bar-seg-on" : ""}`}
-            style={filled && pct > 75 ? { background: "var(--warning)" } : filled ? { background: "var(--text-display)" } : undefined}
+            style={filled ? { background: warn ? "var(--warning)" : "var(--text-display)" } : undefined}
           />
         );
       })}
-    </div>
-  );
-}
-
-const CATEGORY_ACCENTS: Record<string, string> = {
-  Delivery: "#D71921",
-  Supermercado: "#4A9E5C",
-  Transporte: "#5B9BF6",
-  "Gustos personales": "#D4A843",
-  "Gastos del hogar": "#FF8C42",
-  Suscripciones: "#9B59B6",
-  Otros: "#999999",
-};
-
-function CategoryLegend({ categories, total }: { categories: CategoryGroup[]; total: number }) {
-  if (total === 0) {
-    return <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-lg) 0" }}>[SIN GASTOS]</div>;
-  }
-
-  return (
-    <div class="fh-pie-wrap" style={{ marginTop: "var(--space-sm)" }}>
-      {categories.map((group) => (
-        <div class="fh-pie-legend-item" key={group.category}>
-          <span class="fh-pie-dot" style={{ background: CATEGORY_ACCENTS[group.category] || CATEGORY_ACCENTS.Otros }} />
-          <span class="fh-pie-legend-label">{group.category}</span>
-          <span class="fh-pie-legend-pct">{total > 0 ? Math.round((group.total / total) * 100) : 0}%</span>
-          <span class="fh-pie-legend-val">{formatCLP(group.total)}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -106,12 +91,117 @@ function transactionTitle(t: PersonalTransaction) {
   return t.merchant || t.description || "Gasto personal";
 }
 
+function ReclassifySelect({
+  current,
+  expenseId,
+  onDone,
+}: {
+  current: string;
+  expenseId: string;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = async (newCat: string) => {
+    if (newCat === current) {
+      setOpen(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/personal-expenses/reclassify", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: expenseId, category: newCat }),
+      });
+      if (res.ok) {
+        onDone();
+      }
+    } catch { /*ignore*/ }
+    setSaving(false);
+    setOpen(false);
+  };
+
+  if (saving) return <span style={{ fontSize: 11, color: "var(--text-soft)", marginLeft: 8 }}>guardando…</span>;
+
+  return (
+    <span style={{ position: "relative", display: "inline-block", marginLeft: 8 }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        style={{
+          fontSize: 11,
+          padding: "1px 6px",
+          border: "1px solid var(--border)",
+          borderRadius: 4,
+          background: "var(--bg)",
+          cursor: "pointer",
+          color: CATEGORY_COLORS[current] || "#999",
+        }}
+        title="Cambiar categoría"
+      >
+        ✎ {current}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            zIndex: 10,
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            padding: 4,
+            minWidth: 160,
+            boxShadow: "0 4px 12px rgba(0,0,0,.15)",
+          }}
+        >
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => handleSelect(cat)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "4px 8px",
+                border: "none",
+                background: cat === current ? "var(--accent-alpha)" : "transparent",
+                cursor: "pointer",
+                fontSize: 12,
+                color: cat === current ? "var(--accent)" : "var(--text)",
+                fontWeight: cat === current ? 600 : 400,
+                borderRadius: 4,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--accent-alpha)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = cat === current ? "var(--accent-alpha)" : "transparent")}
+            >
+              <span style={{ color: CATEGORY_COLORS[cat] || "#999", marginRight: 6 }}>●</span>
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
 export default function FinanzasPersonalesIsland() {
   const [data, setData] = useState<ByCategoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [expandedCategory, setExpandedCategory] = useState<string | null>("Supermercado");
+  const [income, setIncome] = useState(() => {
+    try {
+      const saved = localStorage.getItem(INCOME_KEY);
+      const n = saved ? Number(saved) : 0;
+      return n > 0 ? n : 0;
+    } catch { return 0; }
+  });
+  const [incomeInput, setIncomeInput] = useState("");
+  const [editingIncome, setEditingIncome] = useState(false);
 
   const fetchData = useCallback(async (date: Date) => {
     setLoading(true);
@@ -124,14 +214,16 @@ export default function FinanzasPersonalesIsland() {
         return;
       }
       const json: ByCategoryResponse = await res.json();
-      const categories = CATEGORIES.map((category) => json.categories.find((group) => group.category === category) || {
-        category,
-        total: 0,
-        count: 0,
-        transactions: [],
-      });
+      const categories = CATEGORIES.map((category) =>
+        json.categories.find((g) => g.category === category) || {
+          category,
+          total: 0,
+          count: 0,
+          transactions: [],
+        }
+      );
       setData({ ...json, categories });
-    } catch (_) {
+    } catch {
       setError("Error al cargar datos");
     } finally {
       setLoading(false);
@@ -160,12 +252,25 @@ export default function FinanzasPersonalesIsland() {
     setExpandedCategory(expandedCategory === category ? null : category);
   };
 
+  const handleIncomeSave = () => {
+    const n = Number(incomeInput.replace(/\./g, "").replace(/\$/g, ""));
+    if (n > 0) {
+      setIncome(n);
+      try { localStorage.setItem(INCOME_KEY, String(n)); } catch { /* ignore */ }
+    }
+    setEditingIncome(false);
+    setIncomeInput("");
+  };
+
   const categories = data?.categories || [];
   const monthTotal = data?.total_spent || 0;
-  const hasExpenses = categories.some((group) => group.count > 0);
+  const hasExpenses = categories.some((g) => g.count > 0);
+  const showIncomeBar = income > 0 && monthTotal > 0;
+  const incomePct = income > 0 ? Math.min((monthTotal / income) * 100, 100) : 0;
 
   return (
     <div class="fh-root">
+      {/* header + month nav */}
       <div class="fh-week-header">
         <span class="fh-label">FINANZAS PERSONALES</span>
         <div class="fp-month-nav">
@@ -175,28 +280,135 @@ export default function FinanzasPersonalesIsland() {
         </div>
       </div>
 
+      {/* sueldo mensual */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: "var(--space-sm)",
+          fontSize: 13,
+        }}
+      >
+        <span class="fh-label" style={{ whiteSpace: "nowrap" }}>SUELDO MENSUAL</span>
+        {editingIncome ? (
+          <>
+            <input
+              type="text"
+              value={incomeInput}
+              onInput={(e) => setIncomeInput((e.target as HTMLInputElement).value)}
+              placeholder={income > 0 ? formatCLP(income) : "Ej: 1200000"}
+              style={{
+                width: 140,
+                padding: "2px 6px",
+                fontSize: 13,
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                background: "var(--bg)",
+                color: "var(--text)",
+              }}
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleIncomeSave(); if (e.key === "Escape") setEditingIncome(false); }}
+            />
+            <button
+              onClick={handleIncomeSave}
+              style={{
+                padding: "2px 10px",
+                fontSize: 12,
+                border: "1px solid var(--accent)",
+                borderRadius: 4,
+                background: "var(--accent)",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Guardar
+            </button>
+            <button
+              onClick={() => setEditingIncome(false)}
+              style={{ padding: "2px 6px", fontSize: 12, border: "none", background: "none", cursor: "pointer", color: "var(--text-soft)" }}
+            >
+              ✕
+            </button>
+          </>
+        ) : (
+          <>
+            <span style={{ fontWeight: 600 }}>
+              {income > 0 ? formatCLP(income) : "—"}
+            </span>
+            <button
+              onClick={() => setEditingIncome(true)}
+              style={{
+                fontSize: 11,
+                padding: "1px 6px",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                background: "var(--bg)",
+                cursor: "pointer",
+              }}
+            >
+              {income > 0 ? "Editar" : "Configurar"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* dashboard hero */}
       <div class="fh-dashboard">
         <div class="fh-budget-hero">
           <div class="fh-budget-numbers">
             <div class="fh-hero-num">
-              <span class="fh-label">TOTAL GASTADO CON MI TARJETA</span>
+              <span class="fh-label">GASTADO EN EL MES</span>
               <span class="fh-hero-value">{data ? formatCLP(monthTotal) : "—"}</span>
             </div>
+            {showIncomeBar && (
+              <div class="fh-hero-num" style={{ marginTop: 2 }}>
+                <span class="fh-label">DEL SUELDO</span>
+                <span class="fh-hero-value" style={{ fontSize: "var(--font-lg)" }}>
+                  {incomePct.toFixed(0)}%
+                </span>
+              </div>
+            )}
           </div>
-          {data && monthTotal > 0 && <SpendingBar spent={monthTotal} total={monthTotal * 1.2} />}
+          {showIncomeBar ? (
+            <SpendingBar spent={monthTotal} total={income} />
+          ) : data && monthTotal > 0 ? (
+            <SpendingBar spent={monthTotal} total={monthTotal * 1.2} />
+          ) : null}
+          {showIncomeBar && (
+            <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-soft)", marginTop: 2 }}>
+              {formatCLP(monthTotal)} de {formatCLP(income)}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* loading / error */}
       {loading && <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-xl) 0" }}>[CARGANDO...]</div>}
       {error && <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-xl) 0", color: "var(--accent)" }}>[{error}]</div>}
 
       {data && !loading && !error && (
         <>
+          {/* legend */}
           <div class="fh-section" style={{ marginTop: "var(--space-md)" }}>
             <span class="fh-label">RESUMEN POR CATEGORÍA</span>
-            <CategoryLegend categories={categories} total={monthTotal} />
+            {hasExpenses ? (
+              <div class="fh-pie-wrap" style={{ marginTop: "var(--space-sm)" }}>
+                {categories.filter((g) => g.total > 0).map((group) => (
+                  <div class="fh-pie-legend-item" key={group.category}>
+                    <span class="fh-pie-dot" style={{ background: CATEGORY_COLORS[group.category] || CATEGORY_COLORS.Otros }} />
+                    <span class="fh-pie-legend-label">{group.category}</span>
+                    <span class="fh-pie-legend-pct">{monthTotal > 0 ? Math.round((group.total / monthTotal) * 100) : 0}%</span>
+                    <span class="fh-pie-legend-val">{formatCLP(group.total)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-lg) 0" }}>[SIN GASTOS]</div>
+            )}
           </div>
 
+          {/* category list */}
           {!hasExpenses ? (
             <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-2xl) 0" }}>
               [NO HAY GASTOS PERSONALES EN ESTE MES]
@@ -214,16 +426,22 @@ export default function FinanzasPersonalesIsland() {
                       aria-expanded={isExpanded}
                     >
                       <div class="fp-merchant-info">
-                        <span class="fp-merchant-name">{group.category}</span>
+                        <span class="fp-merchant-name">
+                          <span style={{ color: CATEGORY_COLORS[group.category] || CATEGORY_COLORS.Otros, marginRight: 6 }}>●</span>
+                          {group.category}
+                        </span>
                         <span class="fp-merchant-meta">{group.count} {group.count === 1 ? "GASTO" : "GASTOS"}</span>
                       </div>
                       <div class="fp-merchant-right">
                         <span class="fp-merchant-total">{formatCLP(group.total)}</span>
-                        <span class="fp-chevron" style={{
-                          transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                          transition: "transform var(--duration-micro) var(--ease-out)",
-                          display: "inline-block",
-                        }}>▼</span>
+                        <span
+                          class="fp-chevron"
+                          style={{
+                            transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                            transition: "transform var(--duration-micro) var(--ease-out)",
+                            display: "inline-block",
+                          }}
+                        >▼</span>
                       </div>
                     </button>
 
@@ -236,17 +454,27 @@ export default function FinanzasPersonalesIsland() {
                               <span class="fp-tx-desc">No hay gastos en esta categoría.</span>
                             </div>
                           </div>
-                        ) : group.transactions.map((t) => (
-                          <div class="fp-transaction" key={t.id}>
-                            <div class="fp-tx-left">
-                              <span class="fp-tx-date">
-                                {shortDate(t.expense_date)}{t.display_time ? ` · ${t.display_time}` : ""}
-                              </span>
-                              <span class="fp-tx-desc">{transactionTitle(t)}</span>
+                        ) : (
+                          group.transactions.map((t) => (
+                            <div class="fp-transaction" key={t.id}>
+                              <div class="fp-tx-left">
+                                <span class="fp-tx-date">
+                                  {shortDate(t.expense_date)}
+                                  {t.display_time ? ` · ${t.display_time}` : ""}
+                                </span>
+                                <span class="fp-tx-desc">
+                                  {transactionTitle(t)}
+                                  <ReclassifySelect
+                                    current={t.category}
+                                    expenseId={t.id}
+                                    onDone={() => fetchData(currentMonth)}
+                                  />
+                                </span>
+                              </div>
+                              <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
                             </div>
-                            <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     )}
                   </div>
