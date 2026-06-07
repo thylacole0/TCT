@@ -1,32 +1,35 @@
 /** @jsxImportSource preact */
 import { useState, useEffect, useCallback } from "preact/hooks";
+import { CATEGORIES } from "../../lib/personalExpenses.js";
 
-// ─── Types ───
-interface Transaction {
+interface PersonalTransaction {
   id: string;
   amount: number;
-  description: string;
+  description: string | null;
   category: string;
   merchant: string | null;
   expense_date: string;
+  expense_time: string | null;
+  display_time: string | null;
   created_at: string;
+  source?: string | null;
+  card_last4?: string | null;
 }
 
-interface MerchantGroup {
-  merchant: string;
+interface CategoryGroup {
+  category: string;
   total: number;
   count: number;
-  transactions: Transaction[];
+  transactions: PersonalTransaction[];
 }
 
-interface ByMerchantResponse {
-  merchants: MerchantGroup[];
+interface ByCategoryResponse {
+  categories: CategoryGroup[];
   total_spent: number;
   from: string;
   to: string;
 }
 
-// ─── Helpers ───
 function formatCLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
@@ -49,7 +52,6 @@ function monthBounds(date: Date) {
   return { from, to };
 }
 
-// Stepped segment bar (like BudgetIsland)
 function SpendingBar({ spent, total }: { spent: number; total: number }) {
   const pct = total > 0 ? Math.min((spent / total) * 100, 100) : 0;
   return (
@@ -68,50 +70,66 @@ function SpendingBar({ spent, total }: { spent: number; total: number }) {
   );
 }
 
-// Simple category pie (mirrors BudgetIsland PieChart)
-const PIE_COLORS = ["#FFFFFF", "#D71921", "#5B9BF6", "#4A9E5C", "#D4A843", "#999999", "#E8E8E8", "#666666", "#333333", "#FF6B6B"];
+const CATEGORY_ACCENTS: Record<string, string> = {
+  Delivery: "#D71921",
+  Supermercado: "#4A9E5C",
+  Transporte: "#5B9BF6",
+  "Gustos personales": "#D4A843",
+  Otros: "#999999",
+};
 
-function MiniPie({ data }: { data: Array<[string, number]> }) {
-  const total = data.reduce((s, [, v]) => s + v, 0);
-  if (total === 0) return <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-lg) 0" }}>[SIN GASTOS]</div>;
+function CategoryLegend({ categories, total }: { categories: CategoryGroup[]; total: number }) {
+  if (total === 0) {
+    return <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-lg) 0" }}>[SIN GASTOS]</div>;
+  }
 
   return (
     <div class="fh-pie-wrap" style={{ marginTop: "var(--space-sm)" }}>
-      {data.map(([label, value], i) => (
-        <div class="fh-pie-legend-item" key={label}>
-          <span class="fh-pie-dot" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-          <span class="fh-pie-legend-label">{label}</span>
-          <span class="fh-pie-legend-pct">{Math.round((value / total) * 100)}%</span>
-          <span class="fh-pie-legend-val">{formatCLP(value)}</span>
+      {categories.map((group) => (
+        <div class="fh-pie-legend-item" key={group.category}>
+          <span class="fh-pie-dot" style={{ background: CATEGORY_ACCENTS[group.category] || CATEGORY_ACCENTS.Otros }} />
+          <span class="fh-pie-legend-label">{group.category}</span>
+          <span class="fh-pie-legend-pct">{total > 0 ? Math.round((group.total / total) * 100) : 0}%</span>
+          <span class="fh-pie-legend-val">{formatCLP(group.total)}</span>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Main Component ───
+function transactionTitle(t: PersonalTransaction) {
+  if (t.merchant && t.description && !t.description.toLowerCase().includes(t.merchant.toLowerCase())) {
+    return `${t.merchant} · ${t.description}`;
+  }
+  return t.merchant || t.description || "Gasto personal";
+}
+
 export default function FinanzasPersonalesIsland() {
-  const [data, setData] = useState<ByMerchantResponse | null>(null);
+  const [data, setData] = useState<ByCategoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
-  const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
-  const [monthTotal, setMonthTotal] = useState(0);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>("Supermercado");
 
   const fetchData = useCallback(async (date: Date) => {
     setLoading(true);
     setError(null);
     const { from, to } = monthBounds(date);
     try {
-      const res = await fetch(`/api/expenses/by-merchant?from=${from}&to=${to}`);
+      const res = await fetch(`/api/personal-expenses/by-category?from=${from}&to=${to}`);
       if (!res.ok) {
         setError(`Error ${res.status}`);
         return;
       }
-      const json: ByMerchantResponse = await res.json();
-      setData(json);
-      setMonthTotal(json.total_spent);
-    } catch (e) {
+      const json: ByCategoryResponse = await res.json();
+      const categories = CATEGORIES.map((category) => json.categories.find((group) => group.category === category) || {
+        category,
+        total: 0,
+        count: 0,
+        transactions: [],
+      });
+      setData({ ...json, categories });
+    } catch (_) {
       setError("Error al cargar datos");
     } finally {
       setLoading(false);
@@ -126,35 +144,26 @@ export default function FinanzasPersonalesIsland() {
     const prev = new Date(currentMonth);
     prev.setMonth(prev.getMonth() - 1);
     setCurrentMonth(prev);
-    setExpandedMerchant(null);
+    setExpandedCategory(null);
   };
 
   const goNextMonth = () => {
     const next = new Date(currentMonth);
     next.setMonth(next.getMonth() + 1);
     setCurrentMonth(next);
-    setExpandedMerchant(null);
+    setExpandedCategory(null);
   };
 
-  const toggleMerchant = (name: string) => {
-    setExpandedMerchant(expandedMerchant === name ? null : name);
+  const toggleCategory = (category: string) => {
+    setExpandedCategory(expandedCategory === category ? null : category);
   };
 
-  // Category totals from the data
-  const categoryTotals: Record<string, number> = {};
-  if (data) {
-    for (const mg of data.merchants) {
-      for (const t of mg.transactions) {
-        const cat = t.category || "General";
-        categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.amount);
-      }
-    }
-  }
-  const catEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+  const categories = data?.categories || [];
+  const monthTotal = data?.total_spent || 0;
+  const hasExpenses = categories.some((group) => group.count > 0);
 
   return (
     <div class="fh-root">
-      {/* Month navigation */}
       <div class="fh-week-header">
         <span class="fh-label">FINANZAS PERSONALES</span>
         <div class="fp-month-nav">
@@ -164,12 +173,11 @@ export default function FinanzasPersonalesIsland() {
         </div>
       </div>
 
-      {/* Total */}
       <div class="fh-dashboard">
         <div class="fh-budget-hero">
           <div class="fh-budget-numbers">
             <div class="fh-hero-num">
-              <span class="fh-label">TOTAL GASTADO</span>
+              <span class="fh-label">TOTAL GASTADO CON MI TARJETA</span>
               <span class="fh-hero-value">{data ? formatCLP(monthTotal) : "—"}</span>
             </div>
           </div>
@@ -177,43 +185,38 @@ export default function FinanzasPersonalesIsland() {
         </div>
       </div>
 
-      {/* Loading / Error */}
       {loading && <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-xl) 0" }}>[CARGANDO...]</div>}
       {error && <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-xl) 0", color: "var(--accent)" }}>[{error}]</div>}
 
       {data && !loading && !error && (
         <>
-          {/* Category breakdown */}
-          {catEntries.length > 0 && (
-            <div class="fh-section" style={{ marginTop: "var(--space-md)" }}>
-              <span class="fh-label">POR CATEGORÍA</span>
-              <MiniPie data={catEntries} />
-            </div>
-          )}
+          <div class="fh-section" style={{ marginTop: "var(--space-md)" }}>
+            <span class="fh-label">RESUMEN POR CATEGORÍA</span>
+            <CategoryLegend categories={categories} total={monthTotal} />
+          </div>
 
-          {/* Merchant groups */}
-          {data.merchants.length === 0 ? (
+          {!hasExpenses ? (
             <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-2xl) 0" }}>
-              [NO HAY GASTOS EN ESTE MES]
+              [NO HAY GASTOS PERSONALES EN ESTE MES]
             </div>
           ) : (
             <div class="fp-merchant-list" style={{ marginTop: "var(--space-md)" }}>
-              <span class="fh-label">POR COMERCIO</span>
-              {data.merchants.map((mg) => {
-                const isExpanded = expandedMerchant === mg.merchant;
+              <span class="fh-label">CATEGORÍAS</span>
+              {categories.map((group) => {
+                const isExpanded = expandedCategory === group.category;
                 return (
-                  <div class="fp-merchant-group" key={mg.merchant}>
+                  <div class="fp-merchant-group" key={group.category}>
                     <button
                       class="fp-merchant-header"
-                      onClick={() => toggleMerchant(mg.merchant)}
+                      onClick={() => toggleCategory(group.category)}
                       aria-expanded={isExpanded}
                     >
                       <div class="fp-merchant-info">
-                        <span class="fp-merchant-name">{mg.merchant}</span>
-                        <span class="fp-merchant-meta">{mg.count} {mg.count === 1 ? "GASTO" : "GASTOS"}</span>
+                        <span class="fp-merchant-name">{group.category}</span>
+                        <span class="fp-merchant-meta">{group.count} {group.count === 1 ? "GASTO" : "GASTOS"}</span>
                       </div>
                       <div class="fp-merchant-right">
-                        <span class="fp-merchant-total">{formatCLP(mg.total)}</span>
+                        <span class="fp-merchant-total">{formatCLP(group.total)}</span>
                         <span class="fp-chevron" style={{
                           transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
                           transition: "transform var(--duration-micro) var(--ease-out)",
@@ -224,11 +227,20 @@ export default function FinanzasPersonalesIsland() {
 
                     {isExpanded && (
                       <div class="fp-transactions">
-                        {mg.transactions.map((t) => (
+                        {group.transactions.length === 0 ? (
+                          <div class="fp-transaction">
+                            <div class="fp-tx-left">
+                              <span class="fp-tx-date">SIN MOVIMIENTOS</span>
+                              <span class="fp-tx-desc">No hay gastos en esta categoría.</span>
+                            </div>
+                          </div>
+                        ) : group.transactions.map((t) => (
                           <div class="fp-transaction" key={t.id}>
                             <div class="fp-tx-left">
-                              <span class="fp-tx-date">{shortDate(t.expense_date)}</span>
-                              <span class="fp-tx-desc">{t.description}</span>
+                              <span class="fp-tx-date">
+                                {shortDate(t.expense_date)}{t.display_time ? ` · ${t.display_time}` : ""}
+                              </span>
+                              <span class="fp-tx-desc">{transactionTitle(t)}</span>
                             </div>
                             <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
                           </div>
