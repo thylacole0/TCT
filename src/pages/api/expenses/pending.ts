@@ -7,7 +7,7 @@ import { createAuthClient } from "../../../lib/supabase";
  * Returns all pending_expenses with status='pending' for the authenticated user.
  * Useful for Hermes Agent to poll for new notifications to classify.
  */
-export const GET: APIRoute = async ({ request, locals }) => {
+export const GET: APIRoute = async ({ locals }) => {
   const user = locals.user;
   if (!user || !locals.accessToken) {
     return new Response("Unauthorized", { status: 401 });

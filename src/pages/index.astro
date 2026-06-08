@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import TctIcon from '../components/icons/TctIcon';
 import { createAuthClient } from '../lib/supabase';
 import { nowChile, todayChile, getMondayChile, formatDateCL, hourChile } from '../lib/dates';
 
@@ -195,7 +196,10 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
       ) : (
         <div class="dash-empty-msg">[SIN PRESUPUESTO CONFIGURADO]</div>
       )}
-      <a href="/finanzas" class="dash-card-link">VER FINANZAS →</a>
+      <a href="/finanzas" class="dash-card-link">
+        <span>VER FINANZAS</span>
+        <TctIcon name="arrowRight" size={12} />
+      </a>
     </div>
 
     <!-- TODAY'S MEALS (bento row) -->
@@ -219,14 +223,20 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
           );
         })}
       </div>
-      <a href="/comidas" class="dash-card-link">PLANIFICAR →</a>
+      <a href="/comidas" class="dash-card-link">
+        <span>PLANIFICAR</span>
+        <TctIcon name="arrowRight" size={12} />
+      </a>
     </div>
 
     <!-- WEIGHT CARD -->
     <div class="dash-card dash-card-weight">
       <div class="dash-card-header">
         <div class="dash-card-label">MI PESO</div>
-        <a href="/peso" class="dash-card-link">VER PROGRESO →</a>
+        <a href="/peso" class="dash-card-link">
+          <span>VER PROGRESO</span>
+          <TctIcon name="arrowRight" size={12} />
+        </a>
       </div>
       {latestWeight ? (
         <div class="dash-weight-hero">
@@ -237,8 +247,14 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
         <div class="dash-empty-msg">[SIN REGISTROS DE PESO]</div>
       )}
       <div class="dash-weight-today">
-        <span class={`dash-weight-check ${todayHasMorning ? 'dash-weight-done' : ''}`}>☀ {todayHasMorning ? '✓' : '—'}</span>
-        <span class={`dash-weight-check ${todayHasNight ? 'dash-weight-done' : ''}`}>☾ {todayHasNight ? '✓' : '—'}</span>
+        <span class={`dash-weight-check ${todayHasMorning ? 'dash-weight-done' : ''}`}>
+          <TctIcon name="sun" size={14} />
+          {todayHasMorning ? <TctIcon name="check" size={13} /> : <span aria-hidden="true">—</span>}
+        </span>
+        <span class={`dash-weight-check ${todayHasNight ? 'dash-weight-done' : ''}`}>
+          <TctIcon name="moon" size={14} />
+          {todayHasNight ? <TctIcon name="check" size={13} /> : <span aria-hidden="true">—</span>}
+        </span>
       </div>
     </div>
 
@@ -246,7 +262,10 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     <div class="dash-card">
       <div class="dash-card-header">
         <div class="dash-card-label">GASTOS RECIENTES</div>
-        <a href="/finanzas" class="dash-card-link">VER TODO →</a>
+        <a href="/finanzas" class="dash-card-link">
+          <span>VER TODO</span>
+          <TctIcon name="arrowRight" size={12} />
+        </a>
       </div>
       <div class="dash-expense-list">
         {expenseLogsSerialized.length === 0 && (
@@ -271,14 +290,14 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     <!-- QUICK ACTIONS -->
     <div class="dash-actions">
       <a href="/peso" class="dash-card dash-card-action">
-        <span class="dash-action-icon">[⚖]</span>
+        <span class="dash-action-icon"><TctIcon name="scale" size={18} /></span>
         <span class="dash-action-label">REGISTRAR PESO</span>
-        <span class="dash-action-arrow">→</span>
+        <span class="dash-action-arrow"><TctIcon name="arrowRight" size={16} /></span>
       </a>
       <a href="/finanzas" class="dash-card dash-card-action">
-        <span class="dash-action-icon">[$]</span>
+        <span class="dash-action-icon"><TctIcon name="dollarSign" size={18} /></span>
         <span class="dash-action-label">REGISTRAR GASTO</span>
-        <span class="dash-action-arrow">→</span>
+        <span class="dash-action-arrow"><TctIcon name="arrowRight" size={16} /></span>
       </a>
     </div>
   </div>
@@ -370,6 +389,9 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
   }
 
   .dash-card-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.1em;
@@ -381,6 +403,15 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
 
   .dash-card-link:hover {
     color: var(--text-display);
+  }
+
+  .dash-card-link svg {
+    flex-shrink: 0;
+    transition: transform var(--duration-micro) var(--ease-out);
+  }
+
+  .dash-card-link:hover svg {
+    transform: translateX(2px);
   }
 
   .dash-week-label {
@@ -646,6 +677,9 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
   }
 
   .dash-weight-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     font-family: var(--font-mono);
     font-size: var(--caption);
     color: var(--text-disabled);
@@ -728,8 +762,12 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
   }
 
   .dash-action-icon {
-    font-family: var(--font-mono);
-    font-size: var(--caption);
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-compact);
     color: var(--text-secondary);
     flex-shrink: 0;
   }
@@ -743,13 +781,17 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
   }
 
   .dash-action-arrow {
-    font-size: var(--body);
+    display: inline-flex;
+    align-items: center;
     color: var(--text-disabled);
-    transition: color var(--duration-micro) var(--ease-out);
+    transition:
+      color var(--duration-micro) var(--ease-out),
+      transform var(--duration-micro) var(--ease-out);
   }
 
   .dash-card-action:hover .dash-action-arrow {
     color: var(--text-display);
+    transform: translateX(2px);
   }
 
   /* Responsive */

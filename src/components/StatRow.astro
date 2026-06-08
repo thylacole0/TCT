@@ -1,4 +1,6 @@
 ---
+import TctIcon from './icons/TctIcon';
+
 interface Props {
   label: string;
   value: string | number;
@@ -8,8 +10,7 @@ interface Props {
 }
 
 const { label, value, unit, color = 'var(--text-primary)', trend } = Astro.props;
-
-const trendSymbol = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '';
+const trendIcon = trend === 'up' ? 'arrowUp' : 'arrowDown';
 ---
 
 <div class="stat-row">
@@ -20,7 +21,9 @@ const trendSymbol = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '';
     </span>
     {unit && <span class="stat-unit">{unit}</span>}
     {trend && trend !== 'neutral' && (
-      <span class="stat-trend" style={`color: ${color};`}>{trendSymbol}</span>
+      <span class="stat-trend" style={`color: ${color};`}>
+        <TctIcon name={trendIcon} size={13} />
+      </span>
     )}
   </div>
 </div>
@@ -48,7 +51,7 @@ const trendSymbol = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '';
 
   .stat-value-wrap {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-xs);
   }
 
@@ -67,6 +70,7 @@ const trendSymbol = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '';
   }
 
   .stat-trend {
-    font-size: var(--body-sm);
+    display: inline-flex;
+    align-items: center;
   }
 </style>

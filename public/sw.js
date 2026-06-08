@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 const CACHE_NAME = 'tct-v4';
+const serviceWorker = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 const STATIC_ASSETS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -20,7 +21,7 @@ self.addEventListener('activate', (event) => {
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
-  self.clients.claim();
+  serviceWorker.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -81,7 +82,7 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = event.notification.data?.url || '/';
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    serviceWorker.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       // Focus existing window if one is open
       for (const client of clients) {
         if (new URL(client.url).pathname === targetUrl && 'focus' in client) {
@@ -89,8 +90,8 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       // Otherwise open a new window
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+      if (serviceWorker.clients.openWindow) {
+        return serviceWorker.clients.openWindow(targetUrl);
       }
     })
   );

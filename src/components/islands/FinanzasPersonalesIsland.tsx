@@ -1,6 +1,7 @@
 /** @jsxImportSource preact */
 import { useState, useEffect, useCallback } from "preact/hooks";
-import { CATEGORIES } from "../../lib/personalExpenses.js";
+import { CATEGORIES, CATEGORY_COLORS, CATEGORY_ICONS } from "../../lib/personalExpenses.js";
+import TctIcon from "../icons/TctIcon";
 
 interface PersonalTransaction {
   id: string;
@@ -30,19 +31,38 @@ interface ByCategoryResponse {
   to: string;
 }
 
-const INCOME_KEY = "tct_personal_monthly_income";
-const CATEGORY_COLORS: Record<string, string> = {
-  Delivery: "#D71921",
-  Supermercado: "#4A9E5C",
-  Transporte: "#5B9BF6",
-  "Gustos personales": "#D4A843",
-  "Gastos del hogar": "#FF8C42",
-  Suscripciones: "#9B59B6",
-  Otros: "#999999",
-};
+interface MonthlyPlan {
+  month_start: string;
+  monthly_income: number;
+  category_budgets: Record<string, number>;
+  storage_available: boolean;
+  warning?: string | null;
+}
+
+const LEGACY_INCOME_KEY = "tct_personal_monthly_income";
+const LOCAL_PLAN_PREFIX = "tct_personal_monthly_plan";
+
+function defaultBudgets() {
+  return Object.fromEntries(CATEGORIES.map((category: string) => [category, 0]));
+}
+
+function defaultPlan(monthStart = "") : MonthlyPlan {
+  return {
+    month_start: monthStart,
+    monthly_income: 0,
+    category_budgets: defaultBudgets(),
+    storage_available: true,
+  };
+}
 
 function formatCLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
+}
+
+function parseMoney(value: string) {
+  const cleaned = value.replace(/[^0-9]/g, "");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
 function shortDate(iso: string) {
@@ -54,34 +74,64 @@ function monthName(date: Date) {
   return date.toLocaleDateString("es-CL", { month: "long", year: "numeric" }).toUpperCase();
 }
 
-function monthBounds(date: Date) {
+function monthKey(date: Date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
-  const from = `${y}-${m}-01`;
-  const lastDay = new Date(y, date.getMonth() + 1, 0).getDate();
-  const to = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+  return `${y}-${m}`;
+}
+
+function monthStart(date: Date) {
+  return `${monthKey(date)}-01`;
+}
+
+function monthBounds(date: Date) {
+  const from = monthStart(date);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const to = `${monthKey(date)}-${String(lastDay).padStart(2, "0")}`;
   return { from, to };
 }
 
-function SpendingBar({ spent, total }: { spent: number; total: number }) {
-  const pct = total > 0 ? Math.min((spent / total) * 100, 100) : 0;
-  const segments = 10;
-  return (
-    <div class="fh-bar-track" style={{ marginTop: 4 }}>
-      {Array.from({ length: segments }, (_, i) => {
-        const segPct = ((i + 1) / segments) * 100;
-        const filled = segPct <= pct;
-        const warn = filled && pct > 75;
-        return (
-          <div
-            key={i}
-            class={`fh-bar-seg ${filled ? "fh-bar-seg-on" : ""}`}
-            style={filled ? { background: warn ? "var(--warning)" : "var(--text-display)" } : undefined}
-          />
-        );
-      })}
-    </div>
-  );
+function localPlanKey(month: string) {
+  return `${LOCAL_PLAN_PREFIX}_${month}`;
+}
+
+function readLocalPlan(month: string): MonthlyPlan {
+  const plan = defaultPlan(`${month}-01`);
+  if (typeof localStorage === "undefined") return plan;
+
+  try {
+    const raw = localStorage.getItem(localPlanKey(month));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      plan.monthly_income = Number(parsed.monthly_income) || 0;
+      plan.category_budgets = { ...plan.category_budgets, ...(parsed.category_budgets || {}) };
+    }
+
+    const legacy = Number(localStorage.getItem(LEGACY_INCOME_KEY) || "0");
+    if (!plan.monthly_income && legacy > 0) {
+      plan.monthly_income = legacy;
+    }
+  } catch {
+    // ignore local fallback failures
+  }
+
+  plan.storage_available = false;
+  return plan;
+}
+
+function writeLocalPlan(month: string, plan: MonthlyPlan) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(localPlanKey(month), JSON.stringify({
+      monthly_income: plan.monthly_income,
+      category_budgets: plan.category_budgets,
+    }));
+    if (plan.monthly_income > 0) {
+      localStorage.setItem(LEGACY_INCOME_KEY, String(plan.monthly_income));
+    }
+  } catch {
+    // ignore local fallback failures
+  }
 }
 
 function transactionTitle(t: PersonalTransaction) {
@@ -91,117 +141,62 @@ function transactionTitle(t: PersonalTransaction) {
   return t.merchant || t.description || "Gasto personal";
 }
 
-function ReclassifySelect({
-  current,
-  expenseId,
-  onDone,
-}: {
-  current: string;
-  expenseId: string;
-  onDone: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+function categoryColor(category: string) {
+  return CATEGORY_COLORS[category] || CATEGORY_COLORS.Otros;
+}
 
-  const handleSelect = async (newCat: string) => {
-    if (newCat === current) {
-      setOpen(false);
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/personal-expenses/reclassify", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: expenseId, category: newCat }),
-      });
-      if (res.ok) {
-        onDone();
-      }
-    } catch { /*ignore*/ }
-    setSaving(false);
-    setOpen(false);
-  };
+function budgetTone(pct: number): "neutral" | "warning" | "danger" {
+  if (pct > 100) return "danger";
+  if (pct >= 80) return "warning";
+  return "neutral";
+}
 
-  if (saving) return <span style={{ fontSize: 11, color: "var(--text-soft)", marginLeft: 8 }}>guardando…</span>;
-
+function ProgressLine({ pct, tone = "neutral" }: { pct: number; tone?: "neutral" | "warning" | "danger" }) {
+  const width = Math.min(Math.max(pct, pct > 0 ? 2 : 0), 100);
   return (
-    <span style={{ position: "relative", display: "inline-block", marginLeft: 8 }}>
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        style={{
-          fontSize: 11,
-          padding: "1px 6px",
-          border: "1px solid var(--border)",
-          borderRadius: 4,
-          background: "var(--bg)",
-          cursor: "pointer",
-          color: CATEGORY_COLORS[current] || "#999",
-        }}
-        title="Cambiar categoría"
-      >
-        ✎ {current}
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            zIndex: 10,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: 4,
-            minWidth: 160,
-            boxShadow: "0 4px 12px rgba(0,0,0,.15)",
-          }}
-        >
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => handleSelect(cat)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: "4px 8px",
-                border: "none",
-                background: cat === current ? "var(--accent-alpha)" : "transparent",
-                cursor: "pointer",
-                fontSize: 12,
-                color: cat === current ? "var(--accent)" : "var(--text)",
-                fontWeight: cat === current ? 600 : 400,
-                borderRadius: 4,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--accent-alpha)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = cat === current ? "var(--accent-alpha)" : "transparent")}
-            >
-              <span style={{ color: CATEGORY_COLORS[cat] || "#999", marginRight: 6 }}>●</span>
-              {cat}
-            </button>
-          ))}
-        </div>
-      )}
-    </span>
+    <div class={`fp-progress fp-progress-${tone}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(pct, 100))}>
+      <div class="fp-progress-fill" style={{ width: `${width}%` }} />
+    </div>
   );
+}
+
+function normalizePlan(raw: any, month: string, local: MonthlyPlan): MonthlyPlan {
+  const apiBudgets = { ...defaultBudgets(), ...(raw?.category_budgets || {}) };
+  const apiIncome = Number(raw?.monthly_income) || 0;
+  const storageAvailable = raw?.storage_available !== false;
+
+  const allApiBudgetsAreZero = Object.values(apiBudgets).every((value) => Number(value) === 0);
+  const hasLocalBudget = Object.values(local.category_budgets).some((value) => Number(value) > 0);
+
+  return {
+    month_start: raw?.month_start || `${month}-01`,
+    monthly_income: apiIncome > 0 ? apiIncome : local.monthly_income,
+    category_budgets: storageAvailable && !(allApiBudgetsAreZero && hasLocalBudget)
+      ? apiBudgets
+      : { ...apiBudgets, ...local.category_budgets },
+    storage_available: storageAvailable,
+    warning: raw?.warning || null,
+  };
 }
 
 export default function FinanzasPersonalesIsland() {
   const [data, setData] = useState<ByCategoryResponse | null>(null);
+  const [plan, setPlan] = useState<MonthlyPlan>(() => defaultPlan(monthStart(new Date())));
   const [loading, setLoading] = useState(true);
+  const [planLoading, setPlanLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [expandedCategory, setExpandedCategory] = useState<string | null>("Supermercado");
-  const [income, setIncome] = useState(() => {
-    try {
-      const saved = localStorage.getItem(INCOME_KEY);
-      const n = saved ? Number(saved) : 0;
-      return n > 0 ? n : 0;
-    } catch { return 0; }
-  });
+  const [editingPlan, setEditingPlan] = useState(false);
   const [incomeInput, setIncomeInput] = useState("");
-  const [editingIncome, setEditingIncome] = useState(false);
+  const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>(() =>
+    Object.fromEntries(CATEGORIES.map((category: string) => [category, ""]))
+  );
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [reclassifyTarget, setReclassifyTarget] = useState<PersonalTransaction | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState<string | null>(null);
 
   const fetchData = useCallback(async (date: Date) => {
     setLoading(true);
@@ -214,7 +209,7 @@ export default function FinanzasPersonalesIsland() {
         return;
       }
       const json: ByCategoryResponse = await res.json();
-      const categories = CATEGORIES.map((category) =>
+      const categories = CATEGORIES.map((category: string) =>
         json.categories.find((g) => g.category === category) || {
           category,
           total: 0,
@@ -230,9 +225,37 @@ export default function FinanzasPersonalesIsland() {
     }
   }, []);
 
+  const fetchMonthlyPlan = useCallback(async (date: Date) => {
+    const month = monthKey(date);
+    const local = readLocalPlan(month);
+    setPlanLoading(true);
+    setPlanError(null);
+
+    try {
+      const res = await fetch(`/api/personal-expenses/monthly-plan?month=${month}`);
+      if (!res.ok) {
+        setPlan(local);
+        setPlanError("Presupuestos usando respaldo local hasta aplicar migración.");
+        return;
+      }
+      const json = await res.json();
+      const nextPlan = normalizePlan(json, month, local);
+      setPlan(nextPlan);
+      if (!nextPlan.storage_available) {
+        setPlanError("Presupuestos usando respaldo local hasta aplicar migración.");
+      }
+    } catch {
+      setPlan(local);
+      setPlanError("Presupuestos usando respaldo local hasta reconectar.");
+    } finally {
+      setPlanLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData(currentMonth);
-  }, [currentMonth, fetchData]);
+    fetchMonthlyPlan(currentMonth);
+  }, [currentMonth, fetchData, fetchMonthlyPlan]);
 
   const goPrevMonth = () => {
     const prev = new Date(currentMonth);
@@ -252,151 +275,186 @@ export default function FinanzasPersonalesIsland() {
     setExpandedCategory(expandedCategory === category ? null : category);
   };
 
-  const handleIncomeSave = () => {
-    const n = Number(incomeInput.replace(/\./g, "").replace(/\$/g, ""));
-    if (n > 0) {
-      setIncome(n);
-      try { localStorage.setItem(INCOME_KEY, String(n)); } catch { /* ignore */ }
+  const openPlanEditor = () => {
+    setPlanError(null);
+    setIncomeInput(plan.monthly_income > 0 ? String(plan.monthly_income) : "");
+    setBudgetInputs(Object.fromEntries(CATEGORIES.map((category: string) => [
+      category,
+      plan.category_budgets[category] > 0 ? String(plan.category_budgets[category]) : "",
+    ])));
+    setEditingPlan(true);
+  };
+
+  const handlePlanSave = async () => {
+    const month = monthKey(currentMonth);
+    const nextPlan: MonthlyPlan = {
+      month_start: `${month}-01`,
+      monthly_income: parseMoney(incomeInput),
+      category_budgets: Object.fromEntries(CATEGORIES.map((category: string) => [
+        category,
+        parseMoney(budgetInputs[category] || ""),
+      ])),
+      storage_available: plan.storage_available,
+    };
+
+    setSavingPlan(true);
+    setPlanError(null);
+    writeLocalPlan(month, nextPlan);
+
+    try {
+      const res = await fetch("/api/personal-expenses/monthly-plan", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month,
+          monthly_income: nextPlan.monthly_income,
+          category_budgets: nextPlan.category_budgets,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const savedPlan = normalizePlan(json, month, nextPlan);
+        setPlan(savedPlan);
+        writeLocalPlan(month, savedPlan);
+        setEditingPlan(false);
+      } else {
+        nextPlan.storage_available = false;
+        setPlan(nextPlan);
+        setPlanError("Guardado localmente. Falta aplicar la migración en Supabase para sincronizar.");
+        setEditingPlan(false);
+      }
+    } catch {
+      nextPlan.storage_available = false;
+      setPlan(nextPlan);
+      setPlanError("Guardado localmente. Se sincronizará cuando el API esté disponible.");
+      setEditingPlan(false);
+    } finally {
+      setSavingPlan(false);
     }
-    setEditingIncome(false);
-    setIncomeInput("");
+  };
+
+  const handleReclassify = async (category: string) => {
+    if (!reclassifyTarget) return;
+    if (category === reclassifyTarget.category) {
+      setReclassifyTarget(null);
+      return;
+    }
+
+    setSavingCategory(true);
+    setReclassifyError(null);
+    try {
+      const res = await fetch("/api/personal-expenses/reclassify", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: reclassifyTarget.id, category }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        setReclassifyError(json?.error || `Error ${res.status}`);
+        return;
+      }
+      setReclassifyTarget(null);
+      await fetchData(currentMonth);
+    } catch {
+      setReclassifyError("No se pudo cambiar la categoría");
+    } finally {
+      setSavingCategory(false);
+    }
   };
 
   const categories = data?.categories || [];
   const monthTotal = data?.total_spent || 0;
   const hasExpenses = categories.some((g) => g.count > 0);
+  const income = plan.monthly_income;
   const showIncomeBar = income > 0 && monthTotal > 0;
-  const incomePct = income > 0 ? Math.min((monthTotal / income) * 100, 100) : 0;
+  const incomePctRaw = income > 0 ? (monthTotal / income) * 100 : 0;
+  const totalCategoryBudget = Object.values(plan.category_budgets).reduce((sum, value) => sum + Number(value || 0), 0);
+  const budgetSpentPct = totalCategoryBudget > 0 ? (monthTotal / totalCategoryBudget) * 100 : 0;
+  const remainingIncome = income > 0 ? income - monthTotal : 0;
 
   return (
-    <div class="fh-root">
-      {/* header + month nav */}
-      <div class="fh-week-header">
-        <span class="fh-label">FINANZAS PERSONALES</span>
-        <div class="fp-month-nav">
-          <button class="fp-nav-btn" onClick={goPrevMonth} aria-label="Mes anterior">←</button>
-          <span class="fp-month-label">{monthName(currentMonth)}</span>
-          <button class="fp-nav-btn" onClick={goNextMonth} aria-label="Mes siguiente">→</button>
+    <div class="fh-root fp-root">
+      <div class="fp-top-stack">
+        <div class="fp-title-row">
+          <span class="fh-label">FINANZAS PERSONALES</span>
         </div>
-      </div>
 
-      {/* sueldo mensual */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: "var(--space-sm)",
-          fontSize: 13,
-        }}
-      >
-        <span class="fh-label" style={{ whiteSpace: "nowrap" }}>SUELDO MENSUAL</span>
-        {editingIncome ? (
-          <>
-            <input
-              type="text"
-              value={incomeInput}
-              onInput={(e) => setIncomeInput((e.target as HTMLInputElement).value)}
-              placeholder={income > 0 ? formatCLP(income) : "Ej: 1200000"}
-              style={{
-                width: 140,
-                padding: "2px 6px",
-                fontSize: 13,
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                background: "var(--bg)",
-                color: "var(--text)",
-              }}
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") handleIncomeSave(); if (e.key === "Escape") setEditingIncome(false); }}
-            />
-            <button
-              onClick={handleIncomeSave}
-              style={{
-                padding: "2px 10px",
-                fontSize: 12,
-                border: "1px solid var(--accent)",
-                borderRadius: 4,
-                background: "var(--accent)",
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              Guardar
-            </button>
-            <button
-              onClick={() => setEditingIncome(false)}
-              style={{ padding: "2px 6px", fontSize: 12, border: "none", background: "none", cursor: "pointer", color: "var(--text-soft)" }}
-            >
-              ✕
-            </button>
-          </>
-        ) : (
-          <>
-            <span style={{ fontWeight: 600 }}>
-              {income > 0 ? formatCLP(income) : "—"}
+        <div class="fp-month-nav" aria-label="Seleccionar mes">
+          <button class="fp-nav-btn" onClick={goPrevMonth} aria-label="Mes anterior">
+            <TctIcon name="chevronLeft" size={18} />
+          </button>
+          <span class="fp-month-label">{monthName(currentMonth)}</span>
+          <button class="fp-nav-btn" onClick={goNextMonth} aria-label="Mes siguiente">
+            <TctIcon name="chevronRight" size={18} />
+          </button>
+        </div>
+
+        <section class="fp-income-strip" aria-label="Sueldo mensual">
+          <div class="fp-income-copy">
+            <span class="fh-label">SUELDO MENSUAL</span>
+            <span class={`fp-income-value ${income <= 0 ? "fp-income-value-empty" : ""}`}>
+              {planLoading ? "..." : income > 0 ? formatCLP(income) : "SIN CONFIGURAR"}
             </span>
-            <button
-              onClick={() => setEditingIncome(true)}
-              style={{
-                fontSize: 11,
-                padding: "1px 6px",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                background: "var(--bg)",
-                cursor: "pointer",
-              }}
-            >
-              {income > 0 ? "Editar" : "Configurar"}
-            </button>
-          </>
-        )}
+            {income > 0 && (
+              <span class="fp-income-meta">
+                Disponible estimado: {formatCLP(Math.max(remainingIncome, 0))}
+                {remainingIncome < 0 ? " · sueldo sobrepasado" : ""}
+              </span>
+            )}
+          </div>
+          <button class="fp-inline-action" onClick={openPlanEditor}>
+            <TctIcon name="edit" size={14} />
+            {income > 0 ? "EDITAR" : "CONFIGURAR"}
+          </button>
+        </section>
+        {planError && <div class="fp-soft-warning">{planError}</div>}
       </div>
 
-      {/* dashboard hero */}
-      <div class="fh-dashboard">
-        <div class="fh-budget-hero">
+      <div class="fh-dashboard fp-dashboard">
+        <div class="fh-budget-hero fp-hero">
           <div class="fh-budget-numbers">
             <div class="fh-hero-num">
               <span class="fh-label">GASTADO EN EL MES</span>
               <span class="fh-hero-value">{data ? formatCLP(monthTotal) : "—"}</span>
             </div>
-            {showIncomeBar && (
-              <div class="fh-hero-num" style={{ marginTop: 2 }}>
+            {income > 0 && (
+              <div class="fh-hero-num fp-hero-side">
                 <span class="fh-label">DEL SUELDO</span>
-                <span class="fh-hero-value" style={{ fontSize: "var(--font-lg)" }}>
-                  {incomePct.toFixed(0)}%
-                </span>
+                <span class="fh-hero-value fp-hero-percent">{incomePctRaw.toFixed(0)}%</span>
               </div>
             )}
           </div>
           {showIncomeBar ? (
-            <SpendingBar spent={monthTotal} total={income} />
+            <ProgressLine pct={incomePctRaw} tone={budgetTone(incomePctRaw)} />
           ) : data && monthTotal > 0 ? (
-            <SpendingBar spent={monthTotal} total={monthTotal * 1.2} />
+            <ProgressLine pct={12} />
           ) : null}
-          {showIncomeBar && (
-            <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-soft)", marginTop: 2 }}>
+          {income > 0 && (
+            <div class="fp-progress-caption">
               {formatCLP(monthTotal)} de {formatCLP(income)}
+            </div>
+          )}
+          {totalCategoryBudget > 0 && (
+            <div class="fp-budget-caption">
+              Presupuesto categorías: {formatCLP(monthTotal)} de {formatCLP(totalCategoryBudget)} · {budgetSpentPct.toFixed(0)}%
             </div>
           )}
         </div>
       </div>
 
-      {/* loading / error */}
-      {loading && <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-xl) 0" }}>[CARGANDO...]</div>}
-      {error && <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-xl) 0", color: "var(--accent)" }}>[{error}]</div>}
+      {loading && <div class="fh-empty fp-state">[CARGANDO...]</div>}
+      {error && <div class="fh-empty fp-state fp-state-error">[{error}]</div>}
 
       {data && !loading && !error && (
         <>
-          {/* legend */}
-          <div class="fh-section" style={{ marginTop: "var(--space-md)" }}>
+          <section class="fh-section fp-summary-section">
             <span class="fh-label">RESUMEN POR CATEGORÍA</span>
             {hasExpenses ? (
-              <div class="fh-pie-wrap" style={{ marginTop: "var(--space-sm)" }}>
+              <div class="fh-pie-wrap fp-summary-list">
                 {categories.filter((g) => g.total > 0).map((group) => (
                   <div class="fh-pie-legend-item" key={group.category}>
-                    <span class="fh-pie-dot" style={{ background: CATEGORY_COLORS[group.category] || CATEGORY_COLORS.Otros }} />
+                    <span class="fh-pie-dot" style={{ background: categoryColor(group.category) }} />
                     <span class="fh-pie-legend-label">{group.category}</span>
                     <span class="fh-pie-legend-pct">{monthTotal > 0 ? Math.round((group.total / monthTotal) * 100) : 0}%</span>
                     <span class="fh-pie-legend-val">{formatCLP(group.total)}</span>
@@ -404,85 +462,201 @@ export default function FinanzasPersonalesIsland() {
                 ))}
               </div>
             ) : (
-              <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-lg) 0" }}>[SIN GASTOS]</div>
+              <div class="fh-empty fp-state">[SIN GASTOS]</div>
             )}
-          </div>
+          </section>
 
-          {/* category list */}
-          {!hasExpenses ? (
-            <div class="fh-empty" style={{ textAlign: "center", padding: "var(--space-2xl) 0" }}>
-              [NO HAY GASTOS PERSONALES EN ESTE MES]
-            </div>
-          ) : (
-            <div class="fp-merchant-list" style={{ marginTop: "var(--space-md)" }}>
+          <section class="fp-category-section">
+            <div class="fp-section-head">
               <span class="fh-label">CATEGORÍAS</span>
-              {categories.map((group) => {
-                const isExpanded = expandedCategory === group.category;
-                return (
-                  <div class="fp-merchant-group" key={group.category}>
-                    <button
-                      class="fp-merchant-header"
-                      onClick={() => toggleCategory(group.category)}
-                      aria-expanded={isExpanded}
-                    >
-                      <div class="fp-merchant-info">
-                        <span class="fp-merchant-name">
-                          <span style={{ color: CATEGORY_COLORS[group.category] || CATEGORY_COLORS.Otros, marginRight: 6 }}>●</span>
-                          {group.category}
-                        </span>
-                        <span class="fp-merchant-meta">{group.count} {group.count === 1 ? "GASTO" : "GASTOS"}</span>
-                      </div>
-                      <div class="fp-merchant-right">
-                        <span class="fp-merchant-total">{formatCLP(group.total)}</span>
-                        <span
-                          class="fp-chevron"
-                          style={{
-                            transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                            transition: "transform var(--duration-micro) var(--ease-out)",
-                            display: "inline-block",
-                          }}
-                        >▼</span>
-                      </div>
-                    </button>
+              <button class="fp-inline-action fp-inline-action-small" onClick={openPlanEditor}>
+                <TctIcon name="edit" size={13} />
+                PRESUPUESTOS
+              </button>
+            </div>
 
-                    {isExpanded && (
-                      <div class="fp-transactions">
-                        {group.transactions.length === 0 ? (
-                          <div class="fp-transaction">
-                            <div class="fp-tx-left">
-                              <span class="fp-tx-date">SIN MOVIMIENTOS</span>
-                              <span class="fp-tx-desc">No hay gastos en esta categoría.</span>
-                            </div>
-                          </div>
+            {!hasExpenses ? (
+              <div class="fh-empty fp-state fp-state-large">[NO HAY GASTOS PERSONALES EN ESTE MES]</div>
+            ) : (
+              <div class="fp-merchant-list fp-category-list">
+                {categories.map((group) => {
+                  const isExpanded = expandedCategory === group.category;
+                  const budget = Number(plan.category_budgets[group.category] || 0);
+                  const categoryBudgetPct = budget > 0 ? (group.total / budget) * 100 : 0;
+                  const spendShare = monthTotal > 0 ? Math.round((group.total / monthTotal) * 100) : 0;
+                  const tone = budget > 0 ? budgetTone(categoryBudgetPct) : "neutral";
+
+                  return (
+                    <div class="fp-merchant-group fp-category-card" key={group.category}>
+                      <button
+                        class="fp-merchant-header fp-category-header"
+                        onClick={() => toggleCategory(group.category)}
+                        aria-expanded={isExpanded}
+                      >
+                        <div class="fp-merchant-info fp-category-info">
+                          <span class="fp-merchant-name fp-category-title">
+                            <span class="fp-category-dot" style={{ background: categoryColor(group.category) }} />
+                            {group.category}
+                          </span>
+                          <span class="fp-merchant-meta">
+                            {group.count} {group.count === 1 ? "GASTO" : "GASTOS"} · {spendShare}% DEL GASTO MENSUAL
+                          </span>
+                        </div>
+                        <div class="fp-merchant-right">
+                          <span class="fp-merchant-total">{formatCLP(group.total)}</span>
+                          <span class="fp-chevron" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
+                            <TctIcon name="chevronDown" size={14} />
+                          </span>
+                        </div>
+                      </button>
+
+                      <div class="fp-category-budget-row">
+                        {budget > 0 ? (
+                          <>
+                            <span>Presupuesto: {formatCLP(budget)} · {categoryBudgetPct.toFixed(0)}% usado</span>
+                            {categoryBudgetPct > 100 && <strong>SOBREPASADO</strong>}
+                          </>
                         ) : (
-                          group.transactions.map((t) => (
-                            <div class="fp-transaction" key={t.id}>
-                              <div class="fp-tx-left">
-                                <span class="fp-tx-date">
-                                  {shortDate(t.expense_date)}
-                                  {t.display_time ? ` · ${t.display_time}` : ""}
-                                </span>
-                                <span class="fp-tx-desc">
-                                  {transactionTitle(t)}
-                                  <ReclassifySelect
-                                    current={t.category}
-                                    expenseId={t.id}
-                                    onDone={() => fetchData(currentMonth)}
-                                  />
-                                </span>
-                              </div>
-                              <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
-                            </div>
-                          ))
+                          <button class="fp-budget-empty-btn" onClick={openPlanEditor}>Definir presupuesto</button>
                         )}
                       </div>
-                    )}
-                  </div>
+                      {budget > 0 && <ProgressLine pct={categoryBudgetPct} tone={tone} />}
+
+                      {isExpanded && (
+                        <div class="fp-transactions">
+                          {group.transactions.length === 0 ? (
+                            <div class="fp-transaction fp-transaction-empty">
+                              <div class="fp-tx-left">
+                                <span class="fp-tx-date">SIN MOVIMIENTOS</span>
+                                <span class="fp-tx-desc">No hay gastos en esta categoría.</span>
+                              </div>
+                            </div>
+                          ) : (
+                            group.transactions.map((t) => (
+                              <div class="fp-transaction" key={t.id}>
+                                <div class="fp-tx-left">
+                                  <span class="fp-tx-date">
+                                    {shortDate(t.expense_date)}
+                                    {t.display_time ? ` · ${t.display_time}` : ""}
+                                  </span>
+                                  <span class="fp-tx-desc">{transactionTitle(t)}</span>
+                                  <button class="fp-tx-category-btn" onClick={() => { setReclassifyTarget(t); setReclassifyError(null); }}>
+                                    <TctIcon name={CATEGORY_ICONS[t.category] || "tag"} size={13} />
+                                    {t.category}
+                                    <TctIcon name="chevronDown" size={12} />
+                                  </button>
+                                </div>
+                                <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {editingPlan && (
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Editar sueldo y presupuestos">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => setEditingPlan(false)} />
+          <div class="fp-modal-sheet">
+            <div class="fp-modal-head">
+              <div>
+                <span class="fh-label">PRESUPUESTOS</span>
+                <h2>Presupuestos — {monthName(currentMonth)}</h2>
+              </div>
+              <button class="fp-icon-btn" onClick={() => setEditingPlan(false)} aria-label="Cerrar">
+                <TctIcon name="x" size={18} />
+              </button>
+            </div>
+
+            <label class="fp-money-field fp-money-field-featured">
+              <span>Sueldo mensual</span>
+              <input
+                inputMode="numeric"
+                value={incomeInput}
+                placeholder="1830000"
+                onInput={(e) => setIncomeInput((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+
+            <div class="fp-budget-editor-list">
+              {CATEGORIES.map((category: string) => (
+                <label class="fp-money-field" key={category}>
+                  <span>
+                    <i style={{ background: categoryColor(category) }} />
+                    {category}
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    value={budgetInputs[category] || ""}
+                    placeholder="0"
+                    onInput={(e) => setBudgetInputs({ ...budgetInputs, [category]: (e.currentTarget as HTMLInputElement).value })}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div class="fp-modal-total">
+              Total presupuestado: {formatCLP(Object.values(budgetInputs).reduce((sum, value) => sum + parseMoney(String(value || "")), 0))}
+              {parseMoney(incomeInput) > 0 && ` de ${formatCLP(parseMoney(incomeInput))}`}
+            </div>
+
+            {planError && <div class="fp-modal-error">{planError}</div>}
+
+            <div class="fp-modal-actions">
+              <button class="fp-secondary-btn" onClick={() => setEditingPlan(false)} disabled={savingPlan}>Cancelar</button>
+              <button class="fp-primary-btn" onClick={handlePlanSave} disabled={savingPlan}>
+                {savingPlan ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reclassifyTarget && (
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Cambiar categoría">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => setReclassifyTarget(null)} />
+          <div class="fp-modal-sheet fp-modal-sheet-compact">
+            <div class="fp-modal-head">
+              <div>
+                <span class="fh-label">CAMBIAR CATEGORÍA</span>
+                <h2>{transactionTitle(reclassifyTarget)}</h2>
+              </div>
+              <button class="fp-icon-btn" onClick={() => setReclassifyTarget(null)} aria-label="Cerrar">
+                <TctIcon name="x" size={18} />
+              </button>
+            </div>
+
+            <div class="fp-category-options">
+              {CATEGORIES.map((category: string) => {
+                const active = category === reclassifyTarget.category;
+                return (
+                  <button
+                    class={`fp-category-option ${active ? "active" : ""}`}
+                    key={category}
+                    onClick={() => handleReclassify(category)}
+                    disabled={savingCategory}
+                  >
+                    <span class="fp-category-option-left">
+                      <span class="fp-category-dot" style={{ background: categoryColor(category) }} />
+                      {category}
+                    </span>
+                    {active && <TctIcon name="check" size={16} />}
+                  </button>
                 );
               })}
             </div>
-          )}
-        </>
+
+            {reclassifyError && <div class="fp-modal-error">{reclassifyError}</div>}
+            {savingCategory && <div class="fp-modal-total">Guardando categoría...</div>}
+          </div>
+        </div>
       )}
     </div>
   );

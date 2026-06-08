@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
+import TctIcon from "../icons/TctIcon";
 
 interface WeightLog {
   id: string;
@@ -16,7 +17,7 @@ interface Props {
 type ViewRange = "7d" | "30d" | "90d";
 
 function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-");
+  const [, m, d] = dateStr.split("-");
   return `${d}/${m}`;
 }
 
@@ -233,7 +234,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
           <div class="wt-log-grid">
             <div class={`wt-log-card ${selectedMorningEntry ? "wt-log-filled" : ""}`}>
               <div class="wt-log-card-header">
-                <span class="wt-log-icon">☀</span>
+                <span class="wt-log-icon"><TctIcon name="sun" size={16} /></span>
                 <span class="wt-log-time">MAÑANA</span>
               </div>
               <div class="wt-log-input-row">
@@ -263,7 +264,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
 
             <div class={`wt-log-card ${selectedNightEntry ? "wt-log-filled" : ""}`}>
               <div class="wt-log-card-header">
-                <span class="wt-log-icon">☾</span>
+                <span class="wt-log-icon"><TctIcon name="moon" size={16} /></span>
                 <span class="wt-log-time">NOCHE</span>
               </div>
               <div class="wt-log-input-row">
@@ -321,7 +322,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
                 GUARDAR
               </button>
               <button class="wt-goal-cancel" onClick={() => setShowGoalForm(false)}>
-                ✕
+                <TctIcon name="x" size={16} />
               </button>
             </div>
           )}
@@ -345,11 +346,11 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
                   <span class="wt-history-date">{formatDate(date)}</span>
                   <div class="wt-history-values">
                     <span class="wt-history-entry">
-                      <span class="wt-history-icon">☀</span>
+                      <span class="wt-history-icon"><TctIcon name="sun" size={13} /></span>
                       {morning ? `${formatKg(morning.weight_kg)}` : "—"}
                     </span>
                     <span class="wt-history-entry">
-                      <span class="wt-history-icon">☾</span>
+                      <span class="wt-history-icon"><TctIcon name="moon" size={13} /></span>
                       {night ? `${formatKg(night.weight_kg)}` : "—"}
                     </span>
                   </div>

@@ -1,8 +1,10 @@
 ---
+type InputKind = string | "textarea" | "select";
+
 interface Props {
   label: string;
   name: string;
-  type?: string;
+  type?: InputKind;
   value?: string;
   placeholder?: string;
   required?: boolean;
@@ -10,6 +12,7 @@ interface Props {
 }
 
 const { label, name, type = 'text', value = '', placeholder, required = false, error } = Astro.props;
+const inputType = type as any;
 ---
 
 <div class:list={['input-group', { 'has-error': error }]}>
@@ -28,7 +31,7 @@ const { label, name, type = 'text', value = '', placeholder, required = false, e
     </select>
   ) : (
     <input 
-      type={type} 
+      type={inputType} 
       id={name} 
       name={name} 
       class="input-field"

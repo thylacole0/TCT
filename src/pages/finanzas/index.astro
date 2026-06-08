@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import BudgetIsland from '../../components/islands/BudgetIsland';
 import { createAuthClient } from '../../lib/supabase';
-import { getMondayChile, getMonthStartChile, getMonthEndChile, formatDateCL } from '../../lib/dates';
+import { getMondayChile, getMonthStartChile, formatDateCL } from '../../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -18,7 +18,6 @@ const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', mon
 
 // Current month calculation (Chile timezone) — for ASEO (monthly)
 const monthStart = getMonthStartChile();
-const monthEnd = getMonthEndChile();
 const monthStartStr = formatDateCL(monthStart);
 const monthLabel = monthStart.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase();
 

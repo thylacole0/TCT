@@ -4,6 +4,7 @@ import Input from '../../components/Input.astro';
 import Button from '../../components/Button.astro';
 import { createAuthClient } from '../../lib/supabase';
 import { getMondayChile, getMonthStartChile, formatDateCL } from '../../lib/dates';
+import TctIcon from '../../components/icons/TctIcon';
 import { getBudgetPeriodEnd, getBudgetPeriodStartForDate, linkExistingExpensesToBudget } from '../../lib/budgets';
 
 const { user, accessToken } = Astro.locals;
@@ -106,7 +107,7 @@ function normalizeDateInput(value: string | null | undefined): string {
 <Layout title={`TCT — Presupuesto ${budgetLabel}`} currentPath={backLink}>
   <div class="presupuesto-page">
     <section class="header-section">
-      <a href={backLink} class="back-link">← FINANZAS</a>
+      <a href={backLink} class="back-link"><TctIcon name="arrowLeft" size={14} /> FINANZAS</a>
     </section>
 
     <h2 class="page-title">{currentBudget ? 'EDITAR' : 'ESTABLECER'} PRESUPUESTO {budgetLabel}</h2>
@@ -173,6 +174,9 @@ function normalizeDateInput(value: string | null | undefined): string {
   }
 
   .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
     font-family: var(--font-mono);
     font-size: var(--label);
     letter-spacing: 0.06em;

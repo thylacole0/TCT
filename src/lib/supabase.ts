@@ -20,7 +20,8 @@ export function createServerClient(request: Request, cookies: AstroCookies) {
     {
       cookies: {
         getAll() {
-          return parseCookieHeader(request.headers.get("Cookie") ?? "");
+          return parseCookieHeader(request.headers.get("Cookie") ?? "")
+            .filter((cookie): cookie is { name: string; value: string } => typeof cookie.value === "string");
         },
         setAll(cookiesToSet) {
           try {

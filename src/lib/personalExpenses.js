@@ -1,5 +1,25 @@
 export const CATEGORIES = ['Delivery', 'Supermercado', 'Transporte', 'Gustos personales', 'Gastos del hogar', 'Suscripciones', 'Otros'];
 
+export const CATEGORY_COLORS = {
+  Delivery: '#D71921',
+  Supermercado: '#4A9E5C',
+  Transporte: '#5B9BF6',
+  'Gustos personales': '#D4A843',
+  'Gastos del hogar': '#FF8C42',
+  Suscripciones: '#9B59B6',
+  Otros: '#999999',
+};
+
+export const CATEGORY_ICONS = {
+  Delivery: 'utensils',
+  Supermercado: 'cart',
+  Transporte: 'transport',
+  'Gustos personales': 'sparkle',
+  'Gastos del hogar': 'home',
+  Suscripciones: 'repeat',
+  Otros: 'tag',
+};
+
 export function normalizePersonalExpenseCategory(category) {
   return CATEGORIES.includes(category) ? category : 'Otros';
 }

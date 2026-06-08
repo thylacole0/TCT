@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import { useState, useCallback } from "preact/hooks";
+import TctIcon from "../icons/TctIcon";
 
 // ─── Types ───
 interface Expense {
@@ -89,7 +90,7 @@ function PieChart({ data, size = 140 }: { data: Array<[string, number]>; size?: 
   const innerR = r * 0.55;
   let cumAngle = -Math.PI / 2;
 
-  const slices = data.map(([label, value], i) => {
+  const slices = data.map(([, value], i) => {
     const angle = (value / total) * 2 * Math.PI;
     const startX = cx + r * Math.cos(cumAngle);
     const startY = cy + r * Math.sin(cumAngle);
@@ -179,7 +180,7 @@ export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isRea
       {/* Top section: summary or budget detail — uses display:none to preserve state */}
       <div class="fh-panel-wrapper">
         <div class="fh-panel" style={{ display: view === "resumen" ? "block" : "none" }}>
-          <SummaryView weekLabel={weekLabel} aseoLabel={aseoLabel} comida={comida} aseo={aseo} />
+          <SummaryView weekLabel={weekLabel} comida={comida} aseo={aseo} />
         </div>
         <div class="fh-panel" style={{ display: view === "comida" ? "block" : "none" }}>
           <BudgetPanel
@@ -213,7 +214,7 @@ export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isRea
 }
 
 // ─── Summary View (comparison) ───
-function SummaryView({ weekLabel, aseoLabel, comida, aseo }: { weekLabel: string; aseoLabel: string; comida: BudgetData; aseo: BudgetData }) {
+function SummaryView({ weekLabel, comida, aseo }: { weekLabel: string; comida: BudgetData; aseo: BudgetData }) {
   const totalBudget = comida.budgetAmount + aseo.budgetAmount;
   const totalSpent = comida.totalSpent + aseo.totalSpent;
   const totalRemaining = totalBudget - totalSpent;
@@ -342,7 +343,7 @@ function BudgetCard({ label, amount, spent }: { label: string; amount: number; s
 
 // ─── Budget Panel (single type detail view) ───
 function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: BudgetData; periodLabel: string; budgetType: BudgetType; isReadOnly?: boolean }) {
-  const { budgetAmount, totalSpent, expenses, dailySpending, categoryTotals, productTotals, budgetWeekId, categories } = data;
+  const { budgetAmount, totalSpent, dailySpending, categoryTotals, productTotals, budgetWeekId, categories } = data;
   const remaining = budgetAmount - totalSpent;
   const pct = budgetAmount > 0 ? Math.min((totalSpent / budgetAmount) * 100, 100) : 0;
   const overflow = totalSpent > budgetAmount;
@@ -400,7 +401,10 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
       ) : (
         <div class="fh-no-budget">
           <span class="fh-empty">[SIN PRESUPUESTO DE {budgetLabel} {noPeriodLabel}]</span>
-          <a href={`/finanzas/presupuesto${typeParam}`} class="fh-link">ESTABLECER PRESUPUESTO →</a>
+          <a href={`/finanzas/presupuesto${typeParam}`} class="fh-link fh-icon-link">
+            <span>ESTABLECER PRESUPUESTO</span>
+            <TctIcon name="arrowRight" size={13} />
+          </a>
         </div>
       )}
 
@@ -466,7 +470,7 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
           <span class="fh-action-label">
             {budgetAmount > 0 ? `EDITAR PRESUPUESTO ${budgetLabel}` : `ESTABLECER PRESUPUESTO ${budgetLabel}`}
           </span>
-          <span class="fh-action-arrow">→</span>
+          <span class="fh-action-arrow"><TctIcon name="arrowRight" size={16} /></span>
         </a>
       )}
     </div>
@@ -862,7 +866,7 @@ function ExpenseForm({
   if (success) {
     return (
       <div class="ef-success">
-        <span class="ef-success-icon">✓</span>
+        <span class="ef-success-icon"><TctIcon name="check" size={18} /></span>
         <span class="ef-success-text">GASTO REGISTRADO</span>
         <span class="ef-success-total">{formatCLP(total)}</span>
       </div>
@@ -962,14 +966,15 @@ function ExpenseForm({
                   onClick={() => removeItem(item.id)}
                   disabled={items.length <= 1}
                 >
-                  ×
+                  <TctIcon name="trash" size={15} />
                 </button>
               </div>
             </div>
           ))}
         </div>
         <button type="button" class="ef-add-btn" onClick={addItem}>
-          + AGREGAR PRODUCTO
+          <TctIcon name="plus" size={15} />
+          <span>AGREGAR PRODUCTO</span>
         </button>
       </div>
 

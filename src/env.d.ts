@@ -23,3 +23,5 @@ declare namespace App {
     userRole: 'member' | 'admin' | null;
   }
 }
+
+declare module "web-push";

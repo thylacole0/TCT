@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import FinanzasPersonalesIsland from '../../components/islands/FinanzasPersonalesIsland';
+import TctIcon from '../../components/icons/TctIcon';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -8,7 +9,7 @@ if (!user || !accessToken) return Astro.redirect('/signin');
 
 <Layout title="TCT — Finanzas Personales" currentPath="/finanzas/personales">
   <div class="fp-page-header">
-    <a href="/finanzas" class="back-link">← FINANZAS</a>
+    <a href="/finanzas" class="back-link"><TctIcon name="arrowLeft" size={14} /> FINANZAS</a>
   </div>
   <FinanzasPersonalesIsland client:load />
 </Layout>
@@ -18,6 +19,9 @@ if (!user || !accessToken) return Astro.redirect('/signin');
     margin-bottom: var(--space-lg);
   }
   .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
     font-family: var(--font-mono);
     font-size: var(--label);
     letter-spacing: 0.06em;

@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import { useState, useCallback, useEffect, useRef } from "preact/hooks";
+import TctIcon from "../icons/TctIcon";
 
 // ─── Types ───
 interface ShoppingItem {
@@ -288,7 +289,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
             disabled={adding}
           />
           <button type="submit" class="sl-add-btn" disabled={adding || !newName.trim()}>
-            +
+            <TctIcon name="plus" size={16} />
           </button>
         </form>
       )}
@@ -322,10 +323,10 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
                       />
                     </div>
                     <button class="sl-buy-confirm" onClick={() => handleBuy(item)}>
-                      ✓
+                      <TctIcon name="check" size={16} />
                     </button>
                     <button class="sl-buy-cancel" onClick={() => { setBuyingId(null); setBuyPrice(""); }}>
-                      ✕
+                      <TctIcon name="x" size={16} />
                     </button>
                   </div>
                 ) : (
@@ -350,7 +351,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
                     </div>
                     {!isReadOnly && (
                       <button class="sl-delete" onClick={() => handleDelete(item.id)} title="Eliminar">
-                        ×
+                        <TctIcon name="trash" size={15} />
                       </button>
                     )}
                   </div>
@@ -372,7 +373,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
                     <div class="sl-item-row">
                       {!isReadOnly && (
                         <button class="sl-check sl-check-done" onClick={() => handleUnbuy(item)} title="Desmarcar">
-                          <span class="sl-check-box sl-check-filled">✓</span>
+                          <span class="sl-check-box sl-check-filled"><TctIcon name="check" size={13} /></span>
                         </button>
                       )}
                       <div class="sl-item-info">
@@ -385,7 +386,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
                       )}
                       {!isReadOnly && (
                         <button class="sl-delete" onClick={() => handleDelete(item.id)} title="Eliminar">
-                          ×
+                          <TctIcon name="trash" size={15} />
                         </button>
                       )}
                     </div>
