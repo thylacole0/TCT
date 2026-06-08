@@ -38,6 +38,7 @@ interface TctIconProps {
   size?: number;
   class?: string;
   title?: string;
+  variant?: "line" | "dots";
 }
 
 const paths: Record<string, ComponentChildren> = {
@@ -235,8 +236,9 @@ const paths: Record<string, ComponentChildren> = {
   check: <path d="m5 12 4 4L19 6" />,
 };
 
-export default function TctIcon({ name, size = 18, class: className, title }: TctIconProps) {
+export default function TctIcon({ name, size = 18, class: className, title, variant = "line" }: TctIconProps) {
   const content = paths[name] || paths.tag;
+  const isDots = variant === "dots";
   return (
     <svg
       class={className}
@@ -245,9 +247,10 @@ export default function TctIcon({ name, size = 18, class: className, title }: Tc
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.8"
+      stroke-width={isDots ? 2.2 : 1.8}
       stroke-linecap="round"
       stroke-linejoin="round"
+      stroke-dasharray={isDots ? "0 3.5" : undefined}
       aria-hidden={title ? undefined : "true"}
       role={title ? "img" : undefined}
     >

@@ -390,25 +390,25 @@ export default function FinanzasPersonalesIsland() {
           </button>
         </div>
 
-        <section class="fp-income-strip" aria-label="Sueldo mensual">
-          <div class="fp-income-copy">
-            <span class="fh-label">SUELDO MENSUAL</span>
-            <span class={`fp-income-value ${income <= 0 ? "fp-income-value-empty" : ""}`}>
-              {planLoading ? "..." : income > 0 ? formatCLP(income) : "SIN CONFIGURAR"}
-            </span>
-            {income > 0 && (
-              <span class="fp-income-meta">
-                Disponible estimado: {formatCLP(Math.max(remainingIncome, 0))}
-                {remainingIncome < 0 ? " · sueldo sobrepasado" : ""}
-              </span>
-            )}
+        <section class="fp-income-card dot-grid-subtle" aria-label="Sueldo mensual">
+          <div class="fp-income-card-header">
+            <span class="dash-card-label">SUELDO MENSUAL</span>
+            <button class="fp-inline-action" onClick={openPlanEditor}>
+              <TctIcon name="edit" size={14} />
+              {income > 0 ? "EDITAR" : "CONFIGURAR"}
+            </button>
           </div>
-          <button class="fp-inline-action" onClick={openPlanEditor}>
-            <TctIcon name="edit" size={14} />
-            {income > 0 ? "EDITAR" : "CONFIGURAR"}
-          </button>
+          <span class={`dash-budget-amount ${income <= 0 ? "fp-income-empty" : ""}`}>
+            {planLoading ? "[...]" : income > 0 ? formatCLP(income) : "[SUELDO NO CONFIGURADO]"}
+          </span>
+          {income > 0 && (
+            <span class="dash-budget-of fp-income-meta-card">
+              Disponible estimado: {formatCLP(Math.max(remainingIncome, 0))}
+              {remainingIncome < 0 ? " · sueldo sobrepasado" : ""}
+            </span>
+          )}
+          {planError && <div class="fp-soft-warning">{planError}</div>}
         </section>
-        {planError && <div class="fp-soft-warning">{planError}</div>}
       </div>
 
       <div class="fh-dashboard fp-dashboard">

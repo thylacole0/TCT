@@ -54,7 +54,7 @@ function isItemActive(item: typeof navItems[0]) {
     </div>
     <div class="nav-actions">
       <button id="theme-toggle" class="theme-btn" aria-label="Toggle theme">
-        <span class="theme-icon"><TctIcon name="theme" size={16} /></span>
+        <span class="theme-icon"><TctIcon name="theme" size={16} variant="dots" /></span>
       </button>
       <a href="/api/auth/signout" class="nav-link signout">SALIR</a>
     </div>
@@ -73,7 +73,7 @@ function isItemActive(item: typeof navItems[0]) {
         aria-label={item.label}
       >
         <span class="nav-mobile-icon" aria-hidden="true">
-          <TctIcon name={item.icon} size={18} />
+          <TctIcon name={item.icon} size={18} variant="dots" />
         </span>
         <span class="nav-mobile-label">{item.mobileLabel}</span>
         {isActive && <span class="nav-mobile-dot"></span>}

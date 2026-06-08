@@ -3013,48 +3013,41 @@
   text-transform: uppercase;
 }
 
-.fp-income-strip {
-  align-items: center;
-  background: linear-gradient(90deg, rgba(255,255,255,0.035), transparent 70%);
-  border-bottom: 1px solid var(--border);
-  border-left: 2px solid var(--text-display);
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: var(--space-md);
-  justify-content: space-between;
-  padding: var(--space-sm) 0 var(--space-sm) var(--space-md);
-}
-
-.fp-income-copy {
+.fp-income-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-compact);
+  padding: var(--space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2xs);
-  min-width: 0;
+  gap: var(--space-sm);
 }
 
-.fp-income-value {
-  color: var(--text-display);
-  font-family: var(--font-display);
-  font-size: clamp(26px, 8vw, 40px);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 0.95;
+.fp-income-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.fp-income-value-empty {
-  color: var(--text-secondary);
+.fp-income-empty {
+  color: var(--text-disabled) !important;
+  font-family: var(--font-mono) !important;
+  font-size: var(--body-sm) !important;
+  letter-spacing: 0.06em !important;
+  font-weight: 400 !important;
+}
+
+.fp-income-meta-card {
+  color: var(--text-disabled);
   font-family: var(--font-mono);
-  font-size: var(--body-sm);
-  letter-spacing: 0.05em;
-  line-height: 1.1;
+  font-size: 10px;
+  letter-spacing: 0.06em;
 }
 
-.fp-income-meta,
 .fp-progress-caption,
 .fp-budget-caption,
 .fp-category-budget-row,
-.fp-modal-total,
-.fp-soft-warning {
+.fp-modal-total {
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 10px;
