@@ -403,7 +403,7 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
           <span class="fh-empty">[SIN PRESUPUESTO DE {budgetLabel} {noPeriodLabel}]</span>
           <a href={`/finanzas/presupuesto${typeParam}`} class="fh-link fh-icon-link">
             <span>ESTABLECER PRESUPUESTO</span>
-            <TctIcon name="arrowRight" size={13} />
+            <TctIcon name="arrowRight" size={13} variant="dots" />
           </a>
         </div>
       )}
@@ -470,7 +470,7 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
           <span class="fh-action-label">
             {budgetAmount > 0 ? `EDITAR PRESUPUESTO ${budgetLabel}` : `ESTABLECER PRESUPUESTO ${budgetLabel}`}
           </span>
-          <span class="fh-action-arrow"><TctIcon name="arrowRight" size={16} /></span>
+          <span class="fh-action-arrow"><TctIcon name="arrowRight" size={16} variant="dots" /></span>
         </a>
       )}
     </div>
@@ -866,7 +866,7 @@ function ExpenseForm({
   if (success) {
     return (
       <div class="ef-success">
-        <span class="ef-success-icon"><TctIcon name="check" size={18} /></span>
+        <span class="ef-success-icon"><TctIcon name="check" size={18} variant="dots" /></span>
         <span class="ef-success-text">GASTO REGISTRADO</span>
         <span class="ef-success-total">{formatCLP(total)}</span>
       </div>
@@ -966,14 +966,14 @@ function ExpenseForm({
                   onClick={() => removeItem(item.id)}
                   disabled={items.length <= 1}
                 >
-                  <TctIcon name="trash" size={15} />
+                  <TctIcon name="trash" size={15} variant="dots" />
                 </button>
               </div>
             </div>
           ))}
         </div>
         <button type="button" class="ef-add-btn" onClick={addItem}>
-          <TctIcon name="plus" size={15} />
+          <TctIcon name="plus" size={15} variant="dots" />
           <span>AGREGAR PRODUCTO</span>
         </button>
       </div>

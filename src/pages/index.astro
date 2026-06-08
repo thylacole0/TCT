@@ -198,7 +198,7 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
       )}
       <a href="/finanzas" class="dash-card-link">
         <span>VER FINANZAS</span>
-        <TctIcon name="arrowRight" size={12} />
+        <TctIcon name="arrowRight" size={12} variant="dots" />
       </a>
     </div>
 
@@ -225,7 +225,7 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
       </div>
       <a href="/comidas" class="dash-card-link">
         <span>PLANIFICAR</span>
-        <TctIcon name="arrowRight" size={12} />
+        <TctIcon name="arrowRight" size={12} variant="dots" />
       </a>
     </div>
 
@@ -235,7 +235,7 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
         <div class="dash-card-label">MI PESO</div>
         <a href="/peso" class="dash-card-link">
           <span>VER PROGRESO</span>
-          <TctIcon name="arrowRight" size={12} />
+          <TctIcon name="arrowRight" size={12} variant="dots" />
         </a>
       </div>
       {latestWeight ? (
@@ -248,12 +248,12 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
       )}
       <div class="dash-weight-today">
         <span class={`dash-weight-check ${todayHasMorning ? 'dash-weight-done' : ''}`}>
-          <TctIcon name="sun" size={14} />
-          {todayHasMorning ? <TctIcon name="check" size={13} /> : <span aria-hidden="true">—</span>}
+          <TctIcon name="sun" size={14} variant="dots" />
+          {todayHasMorning ? <TctIcon name="check" size={13} variant="dots" /> : <span aria-hidden="true">—</span>}
         </span>
         <span class={`dash-weight-check ${todayHasNight ? 'dash-weight-done' : ''}`}>
-          <TctIcon name="moon" size={14} />
-          {todayHasNight ? <TctIcon name="check" size={13} /> : <span aria-hidden="true">—</span>}
+          <TctIcon name="moon" size={14} variant="dots" />
+          {todayHasNight ? <TctIcon name="check" size={13} variant="dots" /> : <span aria-hidden="true">—</span>}
         </span>
       </div>
     </div>
@@ -264,7 +264,7 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
         <div class="dash-card-label">GASTOS RECIENTES</div>
         <a href="/finanzas" class="dash-card-link">
           <span>VER TODO</span>
-          <TctIcon name="arrowRight" size={12} />
+          <TctIcon name="arrowRight" size={12} variant="dots" />
         </a>
       </div>
       <div class="dash-expense-list">
@@ -290,14 +290,14 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     <!-- QUICK ACTIONS -->
     <div class="dash-actions">
       <a href="/peso" class="dash-card dash-card-action">
-        <span class="dash-action-icon"><TctIcon name="scale" size={18} /></span>
+        <span class="dash-action-icon"><TctIcon name="scale" size={18} variant="dots" /></span>
         <span class="dash-action-label">REGISTRAR PESO</span>
-        <span class="dash-action-arrow"><TctIcon name="arrowRight" size={16} /></span>
+        <span class="dash-action-arrow"><TctIcon name="arrowRight" size={16} variant="dots" /></span>
       </a>
       <a href="/finanzas" class="dash-card dash-card-action">
-        <span class="dash-action-icon"><TctIcon name="dollarSign" size={18} /></span>
+        <span class="dash-action-icon"><TctIcon name="dollarSign" size={18} variant="dots" /></span>
         <span class="dash-action-label">REGISTRAR GASTO</span>
-        <span class="dash-action-arrow"><TctIcon name="arrowRight" size={16} /></span>
+        <span class="dash-action-arrow"><TctIcon name="arrowRight" size={16} variant="dots" /></span>
       </a>
     </div>
   </div>

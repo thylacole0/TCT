@@ -22,7 +22,7 @@ const trendIcon = trend === 'up' ? 'arrowUp' : 'arrowDown';
     {unit && <span class="stat-unit">{unit}</span>}
     {trend && trend !== 'neutral' && (
       <span class="stat-trend" style={`color: ${color};`}>
-        <TctIcon name={trendIcon} size={13} />
+        <TctIcon name={trendIcon} size={13} variant="dots" />
       </span>
     )}
   </div>

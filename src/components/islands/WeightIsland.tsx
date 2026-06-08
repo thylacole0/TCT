@@ -234,7 +234,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
           <div class="wt-log-grid">
             <div class={`wt-log-card ${selectedMorningEntry ? "wt-log-filled" : ""}`}>
               <div class="wt-log-card-header">
-                <span class="wt-log-icon"><TctIcon name="sun" size={16} /></span>
+                <span class="wt-log-icon"><TctIcon name="sun" size={16} variant="dots" /></span>
                 <span class="wt-log-time">MAÑANA</span>
               </div>
               <div class="wt-log-input-row">
@@ -264,7 +264,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
 
             <div class={`wt-log-card ${selectedNightEntry ? "wt-log-filled" : ""}`}>
               <div class="wt-log-card-header">
-                <span class="wt-log-icon"><TctIcon name="moon" size={16} /></span>
+                <span class="wt-log-icon"><TctIcon name="moon" size={16} variant="dots" /></span>
                 <span class="wt-log-time">NOCHE</span>
               </div>
               <div class="wt-log-input-row">
@@ -322,7 +322,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
                 GUARDAR
               </button>
               <button class="wt-goal-cancel" onClick={() => setShowGoalForm(false)}>
-                <TctIcon name="x" size={16} />
+                <TctIcon name="x" size={16} variant="dots" />
               </button>
             </div>
           )}
@@ -346,11 +346,11 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
                   <span class="wt-history-date">{formatDate(date)}</span>
                   <div class="wt-history-values">
                     <span class="wt-history-entry">
-                      <span class="wt-history-icon"><TctIcon name="sun" size={13} /></span>
+                      <span class="wt-history-icon"><TctIcon name="sun" size={13} variant="dots" /></span>
                       {morning ? `${formatKg(morning.weight_kg)}` : "—"}
                     </span>
                     <span class="wt-history-entry">
-                      <span class="wt-history-icon"><TctIcon name="moon" size={13} /></span>
+                      <span class="wt-history-icon"><TctIcon name="moon" size={13} variant="dots" /></span>
                       {night ? `${formatKg(night.weight_kg)}` : "—"}
                     </span>
                   </div>

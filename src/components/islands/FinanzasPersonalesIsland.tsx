@@ -382,11 +382,11 @@ export default function FinanzasPersonalesIsland() {
 
         <div class="fp-month-nav" aria-label="Seleccionar mes">
           <button class="fp-nav-btn" onClick={goPrevMonth} aria-label="Mes anterior">
-            <TctIcon name="chevronLeft" size={18} />
+            <TctIcon name="chevronLeft" size={18} variant="dots" />
           </button>
           <span class="fp-month-label">{monthName(currentMonth)}</span>
           <button class="fp-nav-btn" onClick={goNextMonth} aria-label="Mes siguiente">
-            <TctIcon name="chevronRight" size={18} />
+            <TctIcon name="chevronRight" size={18} variant="dots" />
           </button>
         </div>
 
@@ -394,7 +394,7 @@ export default function FinanzasPersonalesIsland() {
           <div class="fp-income-card-header">
             <span class="dash-card-label">SUELDO MENSUAL</span>
             <button class="fp-inline-action" onClick={openPlanEditor}>
-              <TctIcon name="edit" size={14} />
+              <TctIcon name="edit" size={14} variant="dots" />
               {income > 0 ? "EDITAR" : "CONFIGURAR"}
             </button>
           </div>
@@ -470,7 +470,7 @@ export default function FinanzasPersonalesIsland() {
             <div class="fp-section-head">
               <span class="fh-label">CATEGORÍAS</span>
               <button class="fp-inline-action fp-inline-action-small" onClick={openPlanEditor}>
-                <TctIcon name="edit" size={13} />
+                <TctIcon name="edit" size={13} variant="dots" />
                 PRESUPUESTOS
               </button>
             </div>
@@ -505,7 +505,7 @@ export default function FinanzasPersonalesIsland() {
                         <div class="fp-merchant-right">
                           <span class="fp-merchant-total">{formatCLP(group.total)}</span>
                           <span class="fp-chevron" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
-                            <TctIcon name="chevronDown" size={14} />
+                            <TctIcon name="chevronDown" size={14} variant="dots" />
                           </span>
                         </div>
                       </button>
@@ -541,9 +541,9 @@ export default function FinanzasPersonalesIsland() {
                                   </span>
                                   <span class="fp-tx-desc">{transactionTitle(t)}</span>
                                   <button class="fp-tx-category-btn" onClick={() => { setReclassifyTarget(t); setReclassifyError(null); }}>
-                                    <TctIcon name={CATEGORY_ICONS[t.category] || "tag"} size={13} />
+                                    <TctIcon name={CATEGORY_ICONS[t.category] || "tag"} size={13} variant="dots" />
                                     {t.category}
-                                    <TctIcon name="chevronDown" size={12} />
+                                    <TctIcon name="chevronDown" size={12} variant="dots" />
                                   </button>
                                 </div>
                                 <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
@@ -571,7 +571,7 @@ export default function FinanzasPersonalesIsland() {
                 <h2>Presupuestos — {monthName(currentMonth)}</h2>
               </div>
               <button class="fp-icon-btn" onClick={() => setEditingPlan(false)} aria-label="Cerrar">
-                <TctIcon name="x" size={18} />
+                <TctIcon name="x" size={18} variant="dots" />
               </button>
             </div>
 
@@ -629,7 +629,7 @@ export default function FinanzasPersonalesIsland() {
                 <h2>{transactionTitle(reclassifyTarget)}</h2>
               </div>
               <button class="fp-icon-btn" onClick={() => setReclassifyTarget(null)} aria-label="Cerrar">
-                <TctIcon name="x" size={18} />
+                <TctIcon name="x" size={18} variant="dots" />
               </button>
             </div>
 
@@ -647,7 +647,7 @@ export default function FinanzasPersonalesIsland() {
                       <span class="fp-category-dot" style={{ background: categoryColor(category) }} />
                       {category}
                     </span>
-                    {active && <TctIcon name="check" size={16} />}
+                    {active && <TctIcon name="check" size={16} variant="dots" />}
                   </button>
                 );
               })}

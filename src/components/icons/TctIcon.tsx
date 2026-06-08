@@ -247,10 +247,10 @@ export default function TctIcon({ name, size = 18, class: className, title, vari
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width={isDots ? 2.2 : 1.8}
+      stroke-width={isDots ? 1.5 : 1.3}
       stroke-linecap="round"
       stroke-linejoin="round"
-      stroke-dasharray={isDots ? "0 3.5" : undefined}
+      stroke-dasharray={isDots ? "0 2.2" : undefined}
       aria-hidden={title ? undefined : "true"}
       role={title ? "img" : undefined}
     >

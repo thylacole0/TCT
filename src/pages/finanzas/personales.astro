@@ -9,7 +9,7 @@ if (!user || !accessToken) return Astro.redirect('/signin');
 
 <Layout title="TCT — Finanzas Personales" currentPath="/finanzas/personales">
   <div class="fp-page-header">
-    <a href="/finanzas" class="back-link"><TctIcon name="arrowLeft" size={14} /> FINANZAS</a>
+    <a href="/finanzas" class="back-link"><TctIcon name="arrowLeft" size={14} variant="dots" /> FINANZAS</a>
   </div>
   <FinanzasPersonalesIsland client:load />
 </Layout>
