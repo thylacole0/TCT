@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
-import { useState, useEffect, useCallback } from "preact/hooks";
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import type { MutableRef } from "preact/hooks";
 
 // ─── Types ───
 interface MealType {
@@ -100,6 +101,8 @@ const AI_PREFS_STORAGE_KEY = "tct-ai-meal-preferences";
 // ─── Main Component ───
 export default function ComidasIsland({ mealTypes, todaysMeals: initialMeals, isReadOnly }: Props) {
   const [todaysMeals, setTodaysMeals] = useState<Record<string, string>>(initialMeals);
+  // Bridge so the bento cards can open the planner's editor for today
+  const editorBridge = useRef<{ open?: (typeId: string, description?: string) => void }>({});
 
   const handleTodayMealChange = (typeName: string, description: string | null) => {
     setTodaysMeals((prev) => {
@@ -139,10 +142,18 @@ export default function ComidasIsland({ mealTypes, todaysMeals: initialMeals, is
             const isCurrent = mt.name === currentMeal;
             const shortLabel = MEAL_LABELS[mt.name] || "";
 
+            const CardTag = isReadOnly ? "div" : "button";
             return (
-              <div
+              <CardTag
                 class={`bento-card ${isCurrent ? "bento-card-active" : ""} ${meal ? "bento-card-filled" : "bento-card-empty"}`}
                 key={mt.id}
+                {...(!isReadOnly
+                  ? {
+                      type: "button",
+                      onClick: () => editorBridge.current.open?.(mt.id, meal || ""),
+                      "aria-label": `Editar ${mt.name} de hoy`,
+                    }
+                  : {})}
               >
                 <div class="bento-card-top">
                   <span class="bento-meal-type">{mt.name.toUpperCase()}</span>
@@ -150,7 +161,7 @@ export default function ComidasIsland({ mealTypes, todaysMeals: initialMeals, is
                 </div>
                 <div class="bento-card-body">
                   <span class="bento-meal-desc">
-                    {meal || "[SIN PLANIFICAR]"}
+                    {meal || (isReadOnly ? "[SIN PLANIFICAR]" : "[TOCAR PARA PLANIFICAR]")}
                   </span>
                 </div>
                 {isCurrent && (
@@ -158,7 +169,7 @@ export default function ComidasIsland({ mealTypes, todaysMeals: initialMeals, is
                     <span class="bento-now-label">AHORA</span>
                   </div>
                 )}
-              </div>
+              </CardTag>
             );
           })}
         </div>
@@ -172,7 +183,7 @@ export default function ComidasIsland({ mealTypes, todaysMeals: initialMeals, is
             onTodayMealChange={handleTodayMealChange}
           />
         )}
-        {!isReadOnly && <MealPlannerPanel mealTypes={mealTypes} onTodayMealChange={handleTodayMealChange} />}
+        {!isReadOnly && <MealPlannerPanel mealTypes={mealTypes} onTodayMealChange={handleTodayMealChange} editorBridge={editorBridge} />}
       </div>
     </div>
   );
@@ -450,8 +461,8 @@ function AiMealSuggestionPanel({
         </label>
       </div>
 
-      {error && <p class="ai-meal-error">[ERROR: {error}]</p>}
-      {notice && <p class="ai-meal-notice">{notice}</p>}
+      {error && <p class="ai-meal-error" role="alert">[ERROR: {error}]</p>}
+      {notice && <p class="ai-meal-notice" role="status">{notice}</p>}
 
       {suggestions.length > 0 && (
         <div class="ai-meal-results">
@@ -536,7 +547,17 @@ function AiMealSuggestionPanel({
 
       {pendingPlanSuggestion && pendingPlanMeal && (
         <div class="meal-modal-backdrop" role="presentation" onClick={() => !planning && setPendingPlanSuggestion(null)}>
-          <div class="meal-modal" role="dialog" aria-modal="true" aria-label="Agendar sugerencia" onClick={(event) => event.stopPropagation()}>
+          <div
+            class="meal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Agendar sugerencia"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !planning) setPendingPlanSuggestion(null);
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !planning && planDescription.trim()) useInPlan();
+            }}
+          >
             <div class="meal-modal-header">
               <div>
                 <span class="meal-modal-kicker">AGENDAR RECETA</span>
@@ -613,7 +634,7 @@ function formatDisplayDate(value: string): string {
 }
 
 // ─── Meal Planner Panel ───
-function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealType[]; onTodayMealChange: (typeName: string, description: string | null) => void }) {
+function MealPlannerPanel({ mealTypes, onTodayMealChange, editorBridge }: { mealTypes: MealType[]; onTodayMealChange: (typeName: string, description: string | null) => void; editorBridge?: MutableRef<{ open?: (typeId: string, description?: string) => void }> }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [meals, setMeals] = useState<MealPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -621,6 +642,7 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
   const [editorValue, setEditorValue] = useState("");
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
+  const [loadError, setLoadError] = useState(false);
 
   const monday = getMonday(new Date());
   monday.setDate(monday.getDate() + weekOffset * 7);
@@ -641,12 +663,13 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
     setLoading(true);
     try {
       const res = await fetch(`/api/meals/plan?week_start=${mondayStr}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMeals(data);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMeals(data);
+      setLoadError(false);
     } catch (e) {
       console.error("Failed to fetch meals", e);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -665,6 +688,20 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
     setEditorValue(existing?.description || "");
     setEditorError("");
   };
+
+  // Let the bento cards open today's editor directly
+  useEffect(() => {
+    if (!editorBridge) return;
+    editorBridge.current.open = (typeId: string, description?: string) => {
+      setWeekOffset(0);
+      setEditor({ date: today, typeId });
+      setEditorValue(description ?? (getMeal(today, typeId)?.description || ""));
+      setEditorError("");
+    };
+    return () => {
+      editorBridge.current.open = undefined;
+    };
+  });
 
   const closeMealEditor = () => {
     if (editorSaving) return;
@@ -786,8 +823,16 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
         </button>
       </div>
 
-      {loading && <p class="mp-inline-status">[LOADING...]</p>}
+      {loading && <p class="mp-inline-status">[CARGANDO...]</p>}
 
+      {!loading && loadError ? (
+        <div class="island-error-banner" role="alert">
+          <span>[NO SE PUDO CARGAR EL CALENDARIO]</span>
+          <button class="island-retry-btn" onClick={fetchMeals}>
+            REINTENTAR
+          </button>
+        </div>
+      ) : (
       <div class="mp-grid">
         <div class="mp-header-cell mp-corner" />
         {mealTypes.map((mt) => (
@@ -829,10 +874,20 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
           );
         })}
       </div>
+      )}
 
       {editor && activeMealType && (
         <div class="meal-modal-backdrop" role="presentation" onClick={closeMealEditor}>
-          <div class="meal-modal" role="dialog" aria-modal="true" aria-label="Editar comida del calendario" onClick={(event) => event.stopPropagation()}>
+          <div
+            class="meal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Editar comida del calendario"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeMealEditor();
+            }}
+          >
             <div class="meal-modal-header">
               <div>
                 <span class="meal-modal-kicker">CALENDARIO</span>
@@ -853,7 +908,7 @@ function MealPlannerPanel({ mealTypes, onTodayMealChange }: { mealTypes: MealTyp
               autoFocus
               placeholder="Ej: Pollo con arroz y ensalada"
             />
-            {editorError && <p class="meal-modal-error">{editorError}</p>}
+            {editorError && <p class="meal-modal-error" role="alert">{editorError}</p>}
             <div class="meal-modal-actions">
               {activeMeal && (
                 <button class="meal-modal-danger" type="button" onClick={() => saveMeal(editor.date, editor.typeId, "")} disabled={editorSaving}>

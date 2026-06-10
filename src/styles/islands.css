@@ -1,5 +1,50 @@
 /* islands.css - Estilos para interactividad de Preact islands (Nothing Design) */
 
+/* ─── SHARED: error states (todas las islands) ─── */
+.island-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-lg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-technical);
+  background: var(--accent-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.island-retry-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-technical);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--duration-micro) var(--ease-out);
+}
+
+.island-retry-btn:hover {
+  background: var(--surface-raised);
+}
+
+.island-save-error {
+  margin: var(--space-sm) 0;
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
 /* DASHBOARD ACTIVITY ISLAND */
 .da-root {
   display: flex;
@@ -483,7 +528,7 @@
 .bi-total-pair {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xxs);
+  gap: var(--space-2xs);
 }
 
 .bi-stacked-track {
@@ -521,7 +566,7 @@
 }
 
 .bi-expense-section {
-  margin-top: var(--space-xxl);
+  margin-top: var(--space-2xl);
   padding-top: var(--space-lg);
   border-top: 1px solid var(--border);
 }
@@ -843,7 +888,7 @@
 
 .fh-daily-val {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   color: var(--text-primary);
   white-space: nowrap;
 }
@@ -1000,7 +1045,7 @@
 
 .fh-expense-total-label {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   color: var(--text-disabled);
 }
@@ -1017,12 +1062,13 @@
   background: transparent;
   border: 1px solid var(--border);
   border-radius: var(--radius-technical);
-  color: var(--text-disabled);
+  color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--label);
   letter-spacing: 0.08em;
-  padding: var(--space-2xs) var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  min-height: 44px;
   transition: border-color var(--duration-micro) var(--ease-out),
               color var(--duration-micro) var(--ease-out);
 }
@@ -1310,6 +1356,19 @@
   flex-direction: column;
   gap: var(--space-sm);
   transition: border-color var(--duration-micro) var(--ease-out);
+  /* Reset for when the card renders as <button> (editable bento) */
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+button.bento-card {
+  cursor: pointer;
+}
+
+button.bento-card:active {
+  border-color: var(--text-secondary);
 }
 
 .bento-card:hover {
@@ -1815,6 +1874,50 @@
   color: var(--accent);
 }
 
+.sl-undo-btn {
+  margin-left: var(--space-sm);
+  min-height: 44px;
+  padding: 0 var(--space-sm);
+  background: transparent;
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-technical);
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.sl-undo-btn:hover {
+  background: var(--surface-raised);
+}
+
+.sl-clear-bought {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0 var(--space-md);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-technical);
+  font-family: var(--font-mono);
+  font-size: var(--label);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--duration-micro) var(--ease-out),
+              border-color var(--duration-micro) var(--ease-out);
+}
+
+.sl-clear-bought:hover {
+  color: var(--text-primary);
+  border-color: var(--border-visible);
+}
+
+.sl-clear-bought:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .meal-modal-backdrop {
   align-items: center;
   background: rgba(0, 0, 0, 0.8);
@@ -2310,6 +2413,11 @@
   cursor: pointer;
   padding: var(--space-xs);
   flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sl-check-box {
@@ -2379,6 +2487,11 @@
   padding: var(--space-xs);
   line-height: 1;
   flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: color var(--duration-micro) var(--ease-out);
 }
 
@@ -2531,10 +2644,11 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-technical);
   padding: var(--space-2xs) var(--space-md);
+  min-height: 44px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
-  color: var(--text-disabled);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: color var(--duration-micro) var(--ease-out),
               border-color var(--duration-micro) var(--ease-out);
@@ -2900,13 +3014,14 @@
   background: transparent;
   border: 1px solid var(--border);
   border-radius: var(--radius-technical);
-  color: var(--text-disabled);
+  color: var(--text-secondary);
   cursor: pointer;
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--label);
   letter-spacing: 0.08em;
-  padding: var(--space-2xs) var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  min-height: 44px;
   transition: border-color var(--duration-micro) var(--ease-out),
               color var(--duration-micro) var(--ease-out);
 }
@@ -2987,8 +3102,8 @@
   font-family: var(--font-mono);
   justify-content: center;
   line-height: 1;
-  min-height: 36px;
-  min-width: 36px;
+  min-height: 44px;
+  min-width: 44px;
   padding: 0;
   transition: border-color var(--duration-micro) var(--ease-out), color var(--duration-micro) var(--ease-out), background var(--duration-micro) var(--ease-out);
 }
@@ -3447,9 +3562,9 @@
   color: var(--text-primary);
   cursor: pointer;
   display: inline-flex;
-  height: 34px;
+  height: 44px;
   justify-content: center;
-  width: 34px;
+  width: 44px;
 }
 
 .fp-money-field {
@@ -3627,5 +3742,18 @@
 
   .fp-tx-amount {
     padding-top: 18px;
+  }
+}
+
+/* ─── iOS: Safari hace zoom forzado al enfocar inputs con fuente < 16px ─── */
+@media (max-width: 768px) {
+  .sl-add-input,
+  .sl-add-qty,
+  .sl-buy-input,
+  .wt-date-input,
+  .fp-money-field input,
+  .ai-meal-input,
+  .ai-meal-pref {
+    font-size: 16px;
   }
 }

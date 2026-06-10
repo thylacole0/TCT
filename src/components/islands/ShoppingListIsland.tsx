@@ -95,7 +95,11 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
   const [buyPrice, setBuyPrice] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState(false);
+  const [lastDeleted, setLastDeleted] = useState<{ name: string; quantity: number } | null>(null);
+  const [clearing, setClearing] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
 
   const pending = items.filter((i) => !i.is_bought);
   const bought = items.filter((i) => i.is_bought);
@@ -105,11 +109,12 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
     setLoading(true);
     try {
       const res = await fetch(`/api/shopping/list?list_type=${listType}`);
-      if (res.ok) {
-        setItems(await res.json());
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setItems(await res.json());
+      setLoadError(false);
     } catch (e) {
       console.error("Failed to fetch shopping list", e);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -139,13 +144,15 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, list_type: listType, quantity: newQty }),
       });
-      if (res.ok) {
-        const item = await res.json();
-        setItems((prev) => [item, ...prev]);
-        setNewName("");
-        setNewQty(1);
-        setStatus("[AGREGADO]");
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const item = await res.json();
+      setItems((prev) => [item, ...prev]);
+      setNewName("");
+      setNewQty(1);
+      setStatus("[AGREGADO]");
+      setLastDeleted(null);
+      // Keep focus for chained quick entry
+      addInputRef.current?.focus();
     } catch (e) {
       console.error("Failed to add item", e);
       setError("[ERROR: NO SE PUDO AGREGAR]");
@@ -231,21 +238,84 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: ShoppingItem) => {
+    if (
+      item.is_bought &&
+      !confirm("¿Eliminar este producto comprado? El gasto registrado se mantiene.")
+    ) {
+      return;
+    }
     const prev = items;
-    setItems((p) => p.filter((i) => i.id !== id));
+    setItems((p) => p.filter((i) => i.id !== item.id));
     try {
       const res = await fetch("/api/shopping/list", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id: item.id }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setStatus("[ELIMINADO]");
+      if (!item.is_bought) {
+        setLastDeleted({ name: item.name, quantity: item.quantity });
+        setStatus(`[ELIMINADO: ${item.name.toUpperCase()}]`);
+      } else {
+        setLastDeleted(null);
+        setStatus("[ELIMINADO]");
+      }
       setError("");
     } catch (err: any) {
       setItems(prev);
       setError(`[ERROR: ${err.message || "NO SE PUDO ELIMINAR"}]`);
+    }
+  };
+
+  const handleUndoDelete = async () => {
+    if (!lastDeleted) return;
+    const { name, quantity } = lastDeleted;
+    setLastDeleted(null);
+    setStatus("");
+    try {
+      const res = await fetch("/api/shopping/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, list_type: listType, quantity }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const item = await res.json();
+      setItems((prev) => [item, ...prev]);
+      setStatus("[RESTAURADO]");
+    } catch {
+      setError("[ERROR: NO SE PUDO RESTAURAR]");
+    }
+  };
+
+  const handleClearBought = async () => {
+    if (!confirm(`¿Limpiar ${bought.length} producto(s) comprado(s)? Los gastos registrados se mantienen.`)) {
+      return;
+    }
+    setClearing(true);
+    setError("");
+    try {
+      const results = await Promise.all(
+        bought.map((i) =>
+          fetch("/api/shopping/list", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: i.id }),
+          })
+        )
+      );
+      const failedIds = bought.filter((_, idx) => !results[idx].ok).map((i) => i.id);
+      setItems((p) => p.filter((i) => !i.is_bought || failedIds.includes(i.id)));
+      if (failedIds.length > 0) {
+        setError("[ERROR: ALGUNOS PRODUCTOS NO SE PUDIERON LIMPIAR]");
+      } else {
+        setStatus("[COMPRADOS LIMPIADOS]");
+        setLastDeleted(null);
+      }
+    } catch {
+      setError("[ERROR: NO SE PUDO LIMPIAR]");
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -266,19 +336,29 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
         <span class="fh-caption">{pending.length} PENDIENTES</span>
       </div>
 
-      {status && <p class="sl-status">{status}</p>}
-      {error && <p class="sl-error">{error}</p>}
+      {status && (
+        <p class="sl-status" role="status">
+          {status}
+          {lastDeleted && (
+            <button class="sl-undo-btn" onClick={handleUndoDelete}>
+              DESHACER
+            </button>
+          )}
+        </p>
+      )}
+      {error && <p class="sl-error" role="alert">{error}</p>}
 
       {/* Add item form */}
       {!isReadOnly && (
         <form class="sl-add-form" onSubmit={handleAdd}>
           <input
+            ref={addInputRef}
             type="text"
             class="sl-add-input"
             value={newName}
             onInput={(e) => setNewName((e.target as HTMLInputElement).value)}
             placeholder="Agregar producto..."
-            disabled={adding}
+            enterkeyhint="done"
           />
           <input
             type="number"
@@ -296,7 +376,14 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
 
       {/* Pending items */}
       {loading ? (
-        <p class="sl-loading-state">[LOADING...]</p>
+        <p class="sl-loading-state">[CARGANDO...]</p>
+      ) : loadError ? (
+        <div class="island-error-banner" role="alert">
+          <span>[NO SE PUDO CARGAR LA LISTA]</span>
+          <button class="island-retry-btn" onClick={fetchItems}>
+            REINTENTAR
+          </button>
+        </div>
       ) : (
         <>
           <div class="sl-items">
@@ -350,7 +437,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
                       </span>
                     </div>
                     {!isReadOnly && (
-                      <button class="sl-delete" onClick={() => handleDelete(item.id)} title="Eliminar">
+                      <button class="sl-delete" onClick={() => handleDelete(item)} aria-label={`Eliminar ${item.name}`} title="Eliminar">
                         <TctIcon name="trash" size={15} variant="dots" />
                       </button>
                     )}
@@ -366,6 +453,11 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
               <div class="fh-section-header">
                 <span class="fh-label">COMPRADOS</span>
                 <span class="fh-caption">{bought.length}</span>
+                {!isReadOnly && (
+                  <button class="sl-clear-bought" onClick={handleClearBought} disabled={clearing}>
+                    {clearing ? "LIMPIANDO..." : "LIMPIAR"}
+                  </button>
+                )}
               </div>
               <div class="sl-items sl-bought-items">
                 {bought.map((item) => (
@@ -385,7 +477,7 @@ function ShoppingList({ listType, budgetWeekId, isReadOnly }: { listType: ListTy
                         <span class="sl-item-price">{formatCLP(item.bought_price)}</span>
                       )}
                       {!isReadOnly && (
-                        <button class="sl-delete" onClick={() => handleDelete(item.id)} title="Eliminar">
+                        <button class="sl-delete" onClick={() => handleDelete(item)} aria-label={`Eliminar ${item.name}`} title="Eliminar">
                           <TctIcon name="trash" size={15} variant="dots" />
                         </button>
                       )}

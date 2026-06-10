@@ -45,6 +45,12 @@ const recentExpenses = recentExpensesRes.data || [];
 const mealTypes = mealTypesRes.data || [];
 const recentWeightLogs = weightRes.data || [];
 
+// Distinguish real failures from "no rows" (PGRST116 is .single() with 0 rows)
+const budgetError = !!(budgetRes.error && budgetRes.error.code !== 'PGRST116');
+const expensesError = !!recentExpensesRes.error;
+const mealsError = !!(todaysMealsRes.error || mealTypesRes.error);
+const weightError = !!weightRes.error;
+
 // Fetch expense items for recent expenses
 const expenseIds = recentExpenses.map((e: any) => e.id);
 const { data: expenseItems } = expenseIds.length > 0
@@ -193,6 +199,8 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
             })}
           </div>
         </>
+      ) : budgetError ? (
+        <div class="dash-error-msg" role="alert">[NO SE PUDO CARGAR EL PRESUPUESTO — RECARGA LA PÁGINA]</div>
       ) : (
         <div class="dash-empty-msg">[SIN PRESUPUESTO CONFIGURADO]</div>
       )}
@@ -208,6 +216,9 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
         <div class="dash-card-label">COMIDAS DE HOY</div>
         <span class="dash-meal-count">{filledMeals}/{mealTypes.length}</span>
       </div>
+      {mealsError && (
+        <p class="dash-error-msg" role="alert">[NO SE PUDIERON CARGAR LAS COMIDAS — RECARGA LA PÁGINA]</p>
+      )}
       <div class="dash-meals-grid">
         {mealTypes.map(mt => {
           const meal = todaysMeals[mt.name];
@@ -243,6 +254,8 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
           <span class="dash-weight-value">{latestWeight.toFixed(1)}</span>
           <span class="dash-weight-unit">KG</span>
         </div>
+      ) : weightError ? (
+        <div class="dash-error-msg" role="alert">[NO SE PUDO CARGAR TU PESO — RECARGA LA PÁGINA]</div>
       ) : (
         <div class="dash-empty-msg">[SIN REGISTROS DE PESO]</div>
       )}
@@ -268,7 +281,10 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
         </a>
       </div>
       <div class="dash-expense-list">
-        {expenseLogsSerialized.length === 0 && (
+        {expensesError && (
+          <p class="dash-error-msg" role="alert">[NO SE PUDIERON CARGAR LOS GASTOS — RECARGA LA PÁGINA]</p>
+        )}
+        {!expensesError && expenseLogsSerialized.length === 0 && (
           <p class="dash-empty-msg">[SIN GASTOS RECIENTES]</p>
         )}
         {expenseLogsSerialized.slice(0, 5).map((exp: any) => (
@@ -392,10 +408,11 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    min-height: 44px;
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.1em;
-    color: var(--text-disabled);
+    color: var(--text-secondary);
     text-decoration: none;
     transition: color var(--duration-micro) var(--ease-out);
     flex-shrink: 0;
@@ -425,6 +442,14 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
     font-family: var(--font-mono);
     font-size: var(--body-sm);
     color: var(--text-disabled);
+    padding: var(--space-lg) 0;
+    text-align: center;
+  }
+
+  .dash-error-msg {
+    font-family: var(--font-mono);
+    font-size: var(--body-sm);
+    color: var(--accent);
     padding: var(--space-lg) 0;
     text-align: center;
   }
@@ -630,7 +655,7 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
 
   .dash-meal-slot-tag {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 10px;
     letter-spacing: 0.08em;
     color: var(--text-disabled);
   }

@@ -22,16 +22,28 @@ if (Astro.request.method === 'POST') {
   const action = formData.get('action')?.toString();
 
   if (action === 'update_profile') {
-    const displayName = formData.get('display_name')?.toString();
-    if (displayName) {
-      await supabase.from('profiles').update({ display_name: displayName }).eq('id', user.id);
+    const displayName = formData.get('display_name')?.toString().trim();
+    if (!displayName) {
+      return Astro.redirect('/config?error=empty');
     }
+    const { error } = await supabase.from('profiles').update({ display_name: displayName }).eq('id', user.id);
+    return Astro.redirect(error ? '/config?error=save' : '/config?saved=1');
   }
 
   return Astro.redirect('/config');
 }
 
 const myProfile = profiles?.find(p => p.id === user.id);
+
+// Post-redirect feedback
+const saved = Astro.url.searchParams.get('saved') === '1';
+const errorParam = Astro.url.searchParams.get('error');
+const saveErrorMsg =
+  errorParam === 'empty'
+    ? 'El nombre no puede estar vacío.'
+    : errorParam === 'save'
+      ? 'No se pudo guardar el perfil. Intenta de nuevo.'
+      : null;
 ---
 
 <Layout title="TCT — Configuración" currentPath="/config">
@@ -49,10 +61,12 @@ const myProfile = profiles?.find(p => p.id === user.id);
             <span class="profile-avatar-letter">{(myProfile?.display_name || '?')[0]}</span>
           )}
         </div>
+        {saved && <p class="config-feedback config-feedback-ok" role="status">[PERFIL GUARDADO]</p>}
+        {saveErrorMsg && <p class="config-feedback config-feedback-error" role="alert">[{saveErrorMsg}]</p>}
         <form method="POST" class="profile-form">
           <input type="hidden" name="action" value="update_profile" />
           <div class="profile-row">
-            <Input label="Nombre para mostrar" name="display_name" value={myProfile?.display_name || ''} />
+            <Input label="Nombre para mostrar" name="display_name" value={myProfile?.display_name || ''} required />
             <Button type="submit" variant="secondary">GUARDAR</Button>
           </div>
         </form>
@@ -216,6 +230,21 @@ const myProfile = profiles?.find(p => p.id === user.id);
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
+  }
+
+  .config-feedback {
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-md);
+  }
+
+  .config-feedback-ok {
+    color: var(--success);
+  }
+
+  .config-feedback-error {
+    color: var(--accent);
   }
 
   .profile-row {

@@ -135,7 +135,22 @@ function PieChart({ data, size = 140 }: { data: Array<[string, number]>; size?: 
 
 // ─── Main Component ───
 export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isReadOnly }: Props) {
-  const [view, setView] = useState<ViewMode>("resumen");
+  // Survive the full-page reload that follows create/edit/delete of expenses
+  const [view, setView] = useState<ViewMode>(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("tct-budget-view");
+      if (saved === "resumen" || saved === "comida" || saved === "aseo") return saved;
+    }
+    return "resumen";
+  });
+  const changeView = (v: ViewMode) => {
+    setView(v);
+    try {
+      sessionStorage.setItem("tct-budget-view", v);
+    } catch {
+      // storage unavailable (private mode) — tab just won't persist
+    }
+  };
   const categoriesByType: CategoriesByType = {
     comida: comida.categories,
     aseo: aseo.categories,
@@ -159,19 +174,22 @@ export default function BudgetIsland({ weekLabel, aseoLabel, comida, aseo, isRea
       <div class="fh-tabs">
         <button
           class={`fh-tab ${view === "resumen" ? "fh-tab-active" : ""}`}
-          onClick={() => setView("resumen")}
+          aria-pressed={view === "resumen"}
+          onClick={() => changeView("resumen")}
         >
           RESUMEN
         </button>
         <button
           class={`fh-tab ${view === "comida" ? "fh-tab-active" : ""}`}
-          onClick={() => setView("comida")}
+          aria-pressed={view === "comida"}
+          onClick={() => changeView("comida")}
         >
           COMIDA
         </button>
         <button
           class={`fh-tab ${view === "aseo" ? "fh-tab-active" : ""}`}
-          onClick={() => setView("aseo")}
+          aria-pressed={view === "aseo"}
+          onClick={() => changeView("aseo")}
         >
           ASEO
         </button>
@@ -458,7 +476,7 @@ function BudgetPanel({ data, periodLabel, budgetType, isReadOnly }: { data: Budg
             budgetType={budgetType}
             categories={categories}
             onSuccess={() => {
-              setTimeout(() => { window.location.reload(); }, 600);
+              window.location.reload();
             }}
           />
         </div>
@@ -699,7 +717,7 @@ function ExpenseEditPanel({
           Se moverá desde {budgetTypeLabel(expense.budgetType)} hacia {budgetTypeLabel(budgetType)} al guardar.
         </p>
       )}
-      {error && <p class="fh-expense-edit-error">[ERROR: {error}]</p>}
+      {error && <p class="fh-expense-edit-error" role="alert">[ERROR: {error}]</p>}
 
       <div class="fh-expense-edit-actions">
         <button type="button" class="fh-expense-edit-cancel" onClick={onCancel} disabled={saving || deleting}>
@@ -865,7 +883,7 @@ function ExpenseForm({
 
   if (success) {
     return (
-      <div class="ef-success">
+      <div class="ef-success" role="status">
         <span class="ef-success-icon"><TctIcon name="check" size={18} variant="dots" /></span>
         <span class="ef-success-text">GASTO REGISTRADO</span>
         <span class="ef-success-total">{formatCLP(total)}</span>
@@ -875,14 +893,15 @@ function ExpenseForm({
 
   return (
     <form onSubmit={handleSubmit} class="ef-form">
-      <div class="ef-section">
-        <label class="ef-label">CATEGORÍA</label>
+      <div class="ef-section" role="group" aria-label="Categoría">
+        <span class="ef-label" id="ef-category-label">CATEGORÍA</span>
         <div class="ef-tags">
           {categories.map((cat) => (
             <button
               key={cat}
               type="button"
               class={`ef-tag ${category === cat ? "ef-tag-active" : ""}`}
+              aria-pressed={category === cat}
               onClick={() => setCategory(cat)}
             >
               {cat}
@@ -892,8 +911,9 @@ function ExpenseForm({
       </div>
 
       <div class="ef-section">
-        <label class="ef-label">FECHA</label>
+        <label class="ef-label" htmlFor="ef-expense-date">FECHA</label>
         <input
+          id="ef-expense-date"
           type="date"
           class="ef-input"
           value={expenseDate}
@@ -915,6 +935,7 @@ function ExpenseForm({
                     type="text"
                     class="ef-input"
                     placeholder="Nombre del producto"
+                    aria-label="Nombre del producto"
                     value={item.name}
                     onInput={(e) =>
                       updateItem(item.id, "name", (e.target as HTMLInputElement).value)
@@ -924,8 +945,10 @@ function ExpenseForm({
                 <div class="ef-item-qty">
                   <input
                     type="number"
+                    inputmode="decimal"
                     class="ef-input ef-input-number"
                     placeholder="Cant"
+                    aria-label="Cantidad"
                     min="0.1"
                     step="0.1"
                     value={item.quantity || ""}
@@ -941,8 +964,10 @@ function ExpenseForm({
                 <div class="ef-item-price">
                   <input
                     type="number"
+                    inputmode="numeric"
                     class="ef-input ef-input-number"
                     placeholder="Precio"
+                    aria-label="Precio unitario"
                     min="0"
                     step="1"
                     value={item.unit_price || ""}
@@ -963,6 +988,7 @@ function ExpenseForm({
                 <button
                   type="button"
                   class="ef-item-remove"
+                  aria-label="Eliminar producto"
                   onClick={() => removeItem(item.id)}
                   disabled={items.length <= 1}
                 >
@@ -983,7 +1009,7 @@ function ExpenseForm({
         <span class="ef-total-value">{formatCLP(total)}</span>
       </div>
 
-      {error && <div class="ef-error">[ERROR: {error}]</div>}
+      {error && <div class="ef-error" role="alert">[ERROR: {error}]</div>}
 
       <button
         type="submit"

@@ -37,6 +37,8 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
   const [viewRange, setViewRange] = useState<ViewRange>("30d");
   const [saving, setSaving] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [loadError, setLoadError] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Form state
   const [morningWeight, setMorningWeight] = useState("");
@@ -48,13 +50,14 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
     const days = viewRange === "7d" ? 7 : viewRange === "90d" ? 90 : 30;
     try {
       const res = await fetch(`/api/weight/log?days=${days}`);
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setLogs(data.logs || []);
       setGoal(data.goal);
       if (data.goal) setGoalInput(String(data.goal));
+      setLoadError(false);
     } catch {
-      // ignore
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -77,19 +80,22 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
 
   const saveWeight = async (timeOfDay: "morning" | "night", weightStr: string) => {
     const weight = parseFloat(weightStr);
-    if (isNaN(weight) || weight < 20 || weight > 300) return;
+    if (isNaN(weight) || weight < 20 || weight > 300) {
+      setSaveError("El peso debe estar entre 20 y 300 kg.");
+      return;
+    }
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/weight/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ log_date: selectedDate, time_of_day: timeOfDay, weight_kg: weight }),
       });
-      if (res.ok) {
-        await fetchData();
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchData();
     } catch {
-      // ignore
+      setSaveError("No se pudo guardar el peso. Revisa tu conexión e intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -97,20 +103,23 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
 
   const saveGoal = async () => {
     const g = parseFloat(goalInput);
-    if (isNaN(g) || g < 20 || g > 300) return;
+    if (isNaN(g) || g < 20 || g > 300) {
+      setSaveError("La meta debe estar entre 20 y 300 kg.");
+      return;
+    }
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/weight/log", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set_goal", goal_kg: g }),
       });
-      if (res.ok) {
-        setGoal(g);
-        setShowGoalForm(false);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setGoal(g);
+      setShowGoalForm(false);
     } catch {
-      // ignore
+      setSaveError("No se pudo guardar la meta. Revisa tu conexión e intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -121,13 +130,20 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
   const nightLogs = logs.filter((l) => l.time_of_day === "night");
   const latestMorning = morningLogs.length > 0 ? morningLogs[morningLogs.length - 1] : null;
   const latestNight = nightLogs.length > 0 ? nightLogs[nightLogs.length - 1] : null;
-  const latestWeight = latestNight || latestMorning;
+  // Most recent entry wins; night only beats morning within the same day
+  const latestWeight =
+    latestNight && latestMorning
+      ? latestMorning.log_date > latestNight.log_date
+        ? latestMorning
+        : latestNight
+      : latestNight || latestMorning;
 
   // Week change: compare latest morning to morning 7 days ago
   const weekAgoDate = new Date(todayStr + "T12:00:00");
   weekAgoDate.setDate(weekAgoDate.getDate() - 7);
   const weekAgoStr = weekAgoDate.toISOString().split("T")[0];
-  const weekAgoLog = morningLogs.find((l) => l.log_date <= weekAgoStr);
+  // Logs come sorted ascending: take the LAST one at or before 7 days ago
+  const weekAgoLog = [...morningLogs].reverse().find((l) => l.log_date <= weekAgoStr);
   const weekChange = latestMorning && weekAgoLog ? latestMorning.weight_kg - weekAgoLog.weight_kg : null;
 
   // Streak: consecutive days with at least one entry
@@ -147,7 +163,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
     return (
       <div class="wt-root">
         <div class="wt-skeleton">
-          <p class="wt-loading-state">[LOADING...]</p>
+          <p class="wt-loading-state">[CARGANDO...]</p>
         </div>
       </div>
     );
@@ -155,6 +171,21 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
 
   return (
     <div class="wt-root">
+      {loadError && (
+        <div class="island-error-banner" role="alert">
+          <span>[NO SE PUDIERON CARGAR LOS DATOS]</span>
+          <button
+            class="island-retry-btn"
+            onClick={() => {
+              setLoading(true);
+              fetchData();
+            }}
+          >
+            REINTENTAR
+          </button>
+        </div>
+      )}
+
       {/* STATS ROW */}
       <div class="wt-stats">
         <div class="wt-stat">
@@ -228,6 +259,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
               class="wt-date-input"
               value={selectedDate}
               max={todayStr}
+              aria-label="Fecha del registro"
               onInput={(e) => setSelectedDate((e.target as HTMLInputElement).value || todayStr)}
             />
           </div>
@@ -240,10 +272,12 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
               <div class="wt-log-input-row">
                 <input
                   type="number"
+                  inputmode="decimal"
                   step="0.1"
                   min="20"
                   max="300"
                   placeholder="00.0"
+                  aria-label="Peso de la mañana en kilogramos"
                   class="wt-log-input"
                   value={morningWeight}
                   onInput={(e) => setMorningWeight((e.target as HTMLInputElement).value)}
@@ -270,10 +304,12 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
               <div class="wt-log-input-row">
                 <input
                   type="number"
+                  inputmode="decimal"
                   step="0.1"
                   min="20"
                   max="300"
                   placeholder="00.0"
+                  aria-label="Peso de la noche en kilogramos"
                   class="wt-log-input"
                   value={nightWeight}
                   onInput={(e) => setNightWeight((e.target as HTMLInputElement).value)}
@@ -295,6 +331,12 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
         </div>
       )}
 
+      {!isReadOnly && saveError && (
+        <p class="island-save-error" role="alert">
+          [{saveError}]
+        </p>
+      )}
+
       {/* GOAL */}
       {!isReadOnly && (
         <div class="wt-goal-section">
@@ -306,10 +348,12 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
             <div class="wt-goal-form">
               <input
                 type="number"
+                inputmode="decimal"
                 step="0.1"
                 min="20"
                 max="300"
                 placeholder="Meta en kg"
+                aria-label="Meta de peso en kilogramos"
                 class="wt-goal-input"
                 value={goalInput}
                 onInput={(e) => setGoalInput((e.target as HTMLInputElement).value)}
@@ -321,7 +365,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
               <button class="wt-goal-confirm" disabled={saving} onClick={saveGoal}>
                 GUARDAR
               </button>
-              <button class="wt-goal-cancel" onClick={() => setShowGoalForm(false)}>
+              <button class="wt-goal-cancel" aria-label="Cancelar" onClick={() => setShowGoalForm(false)}>
                 <TctIcon name="x" size={16} variant="dots" />
               </button>
             </div>
@@ -333,7 +377,7 @@ export default function WeightIsland({ todayStr, isReadOnly }: Props) {
       <div class="wt-history">
         <span class="wt-section-label">HISTORIAL</span>
         <div class="wt-history-list">
-          {logs.length === 0 && <p class="wt-empty">[SIN REGISTROS]</p>}
+          {logs.length === 0 && !loadError && <p class="wt-empty">[SIN REGISTROS]</p>}
           {[...new Set(logs.map((l) => l.log_date))]
             .sort((a, b) => b.localeCompare(a))
             .slice(0, 14)

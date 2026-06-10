@@ -53,10 +53,10 @@ function isItemActive(item: typeof navItems[0]) {
       })}
     </div>
     <div class="nav-actions">
-      <button id="theme-toggle" class="theme-btn" aria-label="Toggle theme">
+      <button id="theme-toggle" class="theme-btn" aria-label="Cambiar tema">
         <span class="theme-icon"><TctIcon name="theme" size={16} variant="dots" /></span>
       </button>
-      <a href="/api/auth/signout" class="nav-link signout">SALIR</a>
+      <a href="/api/auth/signout" class="nav-link signout" data-astro-reload>SALIR</a>
     </div>
   </div>
 </nav>
@@ -160,9 +160,9 @@ function isItemActive(item: typeof navItems[0]) {
     font-size: var(--label);
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-disabled);
+    color: var(--text-secondary);
     text-decoration: none;
-    padding: var(--space-sm) 0;
+    padding: var(--space-md) 0;
     transition: color var(--duration-micro) var(--ease-out);
     white-space: nowrap;
   }
@@ -186,6 +186,11 @@ function isItemActive(item: typeof navItems[0]) {
     border: none;
     cursor: pointer;
     padding: var(--space-xs);
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     color: var(--text-secondary);
     font-size: 18px;
     transition: color var(--duration-micro) var(--ease-out);
@@ -203,8 +208,11 @@ function isItemActive(item: typeof navItems[0]) {
   }
 
   .signout {
-    color: var(--text-disabled);
+    color: var(--text-secondary);
     font-size: var(--label);
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .signout:hover {
@@ -221,14 +229,14 @@ function isItemActive(item: typeof navItems[0]) {
     z-index: 100;
     background: var(--black);
     border-top: 1px solid var(--border);
-    height: calc(66px + env(safe-area-inset-bottom, 0px));
+    height: calc(var(--nav-height-bottom) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     justify-content: stretch;
     align-items: stretch;
   }
 
   .nav-mobile-link {
-    color: var(--text-disabled);
+    color: var(--text-secondary);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -266,7 +274,7 @@ function isItemActive(item: typeof navItems[0]) {
   .nav-mobile-label {
     color: currentColor;
     font-family: var(--font-mono);
-    font-size: 7.8px;
+    font-size: 10px;
     letter-spacing: 0.015em;
     line-height: 1;
     max-width: 100%;

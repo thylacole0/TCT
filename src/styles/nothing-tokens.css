@@ -57,6 +57,9 @@
   --duration-normal: 250ms;
   --duration-slow: 400ms;
 
+  /* Layout */
+  --nav-height-bottom: 66px;
+
   /* Radius */
   --radius-technical: 4px;
   --radius-compact: 8px;
@@ -76,6 +79,8 @@
   --text-secondary: #666666;
   --text-primary: #1A1A1A;
   --text-display: #000000;
+  --success: #2E7D43;
+  --warning: #8A6A1C;
   --interactive: #007AFF;
 }
 

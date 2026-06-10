@@ -75,6 +75,13 @@ const inputType = type as any;
     border-bottom-color: var(--text-primary);
   }
 
+  /* iOS: Safari hace zoom forzado al enfocar inputs con fuente < 16px */
+  @media (max-width: 768px) {
+    .input-field {
+      font-size: 16px;
+    }
+  }
+
   .input-field::placeholder {
     color: var(--text-disabled);
   }

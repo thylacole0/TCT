@@ -44,9 +44,19 @@ const aseoExpenses = aseoExpRes.data || [];
 
 // Fetch expense items for both
 const allExpenseIds = [...expenses, ...aseoExpenses].map((e: any) => e.id);
-const { data: expenseItems } = allExpenseIds.length > 0
+const expenseItemsRes = allExpenseIds.length > 0
   ? await supabase.from('expense_items').select('*').in('expense_id', allExpenseIds)
-  : { data: [] };
+  : { data: [], error: null };
+const expenseItems = expenseItemsRes.data;
+
+// Real failures only: .single() with 0 rows (PGRST116) means "no budget yet", not an error
+const loadError = !!(
+  (comidaBudgetRes.error && comidaBudgetRes.error.code !== 'PGRST116') ||
+  (aseoBudgetRes.error && aseoBudgetRes.error.code !== 'PGRST116') ||
+  comidaExpRes.error ||
+  aseoExpRes.error ||
+  expenseItemsRes.error
+);
 
 // Serialize expenses helper
 const serializeExpenses = (exps: any[]) => exps.map((e: any) => ({
@@ -76,7 +86,7 @@ const dayNames = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
 const comidaDailySpending: Record<string, number> = {};
 for (let i = 0; i < 7; i++) comidaDailySpending[dayNames[i]] = 0;
 expenses.forEach(e => {
-  const dow = new Date(e.expense_date).getDay();
+  const dow = new Date(e.expense_date + 'T12:00:00').getDay();
   const dayIdx = dow === 0 ? 6 : dow - 1;
   comidaDailySpending[dayNames[dayIdx]] += Number(e.amount);
 });
@@ -100,7 +110,7 @@ aseoExpenses.forEach(e => {
 const aseoDailySpending: Record<string, number> = {};
 for (let i = 0; i < 7; i++) aseoDailySpending[dayNames[i]] = 0;
 aseoExpenses.forEach(e => {
-  const dow = new Date(e.expense_date).getDay();
+  const dow = new Date(e.expense_date + 'T12:00:00').getDay();
   const dayIdx = dow === 0 ? 6 : dow - 1;
   aseoDailySpending[dayNames[dayIdx]] += Number(e.amount);
 });
@@ -115,6 +125,14 @@ const isReadOnly = Astro.locals.userRole === 'admin';
 ---
 
 <Layout title="TCT — Finanzas" currentPath="/finanzas">
+  {loadError ? (
+    <div class="island-error-banner" role="alert">
+      <span>[NO SE PUDIERON CARGAR LOS DATOS DE FINANZAS]</span>
+      <a href="/finanzas" class="island-retry-btn" data-astro-reload style="display: inline-flex; align-items: center; text-decoration: none;">
+        REINTENTAR
+      </a>
+    </div>
+  ) : (
   <BudgetIsland
     client:load
     weekLabel={weekLabel}
@@ -141,4 +159,5 @@ const isReadOnly = Astro.locals.userRole === 'admin';
     }}
     isReadOnly={isReadOnly}
   />
+  )}
 </Layout>

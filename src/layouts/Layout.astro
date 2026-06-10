@@ -27,6 +27,22 @@ const {
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
 
+    <!-- Apply saved theme before first paint (also covers pages without nav, e.g. signin) -->
+    <script is:inline>
+      (function () {
+        function applySavedTheme() {
+          try {
+            var saved = localStorage.getItem('tct-theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+          } catch (e) {
+            // localStorage unavailable — keep server default
+          }
+        }
+        applySavedTheme();
+        document.addEventListener('astro:after-swap', applySavedTheme);
+      })();
+    </script>
+
     <!-- Fonts preconnect -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -75,7 +91,7 @@ const {
   /* Push notification banner */
   .push-banner {
     position: fixed;
-    bottom: calc(var(--nav-height, 60px) + var(--space-md));
+    bottom: calc(var(--nav-height-bottom) + env(safe-area-inset-bottom, 0px) + var(--space-md));
     left: var(--space-md);
     right: var(--space-md);
     z-index: 1000;
@@ -84,7 +100,7 @@ const {
     justify-content: space-between;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
-    background: var(--surface-elevated, #1a1a1a);
+    background: var(--surface-raised);
     border: 1px solid var(--border);
     border-radius: 14px;
     transform: translateY(calc(100% + 80px));
@@ -113,6 +129,7 @@ const {
     font-size: 11px;
     letter-spacing: 0.08em;
     padding: var(--space-xs) var(--space-sm);
+    min-height: 44px;
     border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
@@ -234,7 +251,7 @@ const {
     }
     main.has-nav {
       padding-top: calc(48px + env(safe-area-inset-top, 0px) + var(--space-lg));
-      padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + var(--space-lg));
+      padding-bottom: calc(var(--nav-height-bottom) + env(safe-area-inset-bottom, 0px) + var(--space-lg));
     }
   }
 </style>
@@ -244,23 +261,35 @@ const {
     const loader = document.getElementById('page-loader');
     if (!loader) return;
 
+    let safetyTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const hideLoader = () => {
+      if (safetyTimer) clearTimeout(safetyTimer);
+      loader.classList.remove('active');
+      loader.classList.add('done');
+      setTimeout(() => loader.classList.remove('done'), 250);
+    };
+
     // Show loader instantly on internal link click (before Astro starts fetching)
     document.addEventListener('click', (e) => {
+      // Modified clicks / non-primary button open in another tab: the swap never
+      // happens here, so the loader would stay stuck covering the page
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (e as MouseEvent).button !== 0) return;
       const link = (e.target as Element)?.closest?.('a[href]') as HTMLAnchorElement | null;
       if (!link) return;
+      if (link.target === '_blank' || link.hasAttribute('download')) return;
       const href = link.getAttribute('href');
-      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto:') || link.hasAttribute('data-astro-reload')) return;
+      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || link.hasAttribute('data-astro-reload')) return;
       // Same page — skip
       if (href === window.location.pathname) return;
       loader.classList.remove('done');
       loader.classList.add('active');
+      // Safety net: never leave the overlay blocking the app if navigation fails
+      if (safetyTimer) clearTimeout(safetyTimer);
+      safetyTimer = setTimeout(hideLoader, 8000);
     });
 
-    document.addEventListener('astro:after-swap', () => {
-      loader.classList.remove('active');
-      loader.classList.add('done');
-      setTimeout(() => loader.classList.remove('done'), 250);
-    });
+    document.addEventListener('astro:after-swap', hideLoader);
   }
   initLoader();
 
@@ -279,7 +308,10 @@ const {
       if (!localStorage.getItem('tct-push-dismissed')) {
         setTimeout(() => {
           const banner = document.getElementById('push-banner');
-          if (banner) banner.classList.add('push-banner-show');
+          if (banner) {
+            banner.classList.add('push-banner-show');
+            banner.setAttribute('aria-hidden', 'false');
+          }
         }, 2000);
       }
     }).catch((err) => {
@@ -290,7 +322,10 @@ const {
   // Handle notification banner buttons
   document.getElementById('push-accept')?.addEventListener('click', async () => {
     const banner = document.getElementById('push-banner');
-    if (banner) banner.classList.remove('push-banner-show');
+    if (banner) {
+      banner.classList.remove('push-banner-show');
+      banner.setAttribute('aria-hidden', 'true');
+    }
     localStorage.removeItem('tct-push-dismissed');
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
@@ -300,7 +335,10 @@ const {
   });
   document.getElementById('push-dismiss')?.addEventListener('click', () => {
     const banner = document.getElementById('push-banner');
-    if (banner) banner.classList.remove('push-banner-show');
+    if (banner) {
+      banner.classList.remove('push-banner-show');
+      banner.setAttribute('aria-hidden', 'true');
+    }
     localStorage.setItem('tct-push-dismissed', '1');
   });
 

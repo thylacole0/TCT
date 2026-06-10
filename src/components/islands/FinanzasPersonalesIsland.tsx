@@ -235,18 +235,18 @@ export default function FinanzasPersonalesIsland() {
       const res = await fetch(`/api/personal-expenses/monthly-plan?month=${month}`);
       if (!res.ok) {
         setPlan(local);
-        setPlanError("Presupuestos usando respaldo local hasta aplicar migración.");
+        setPlanError("Tus presupuestos están guardados en este dispositivo y se sincronizarán automáticamente.");
         return;
       }
       const json = await res.json();
       const nextPlan = normalizePlan(json, month, local);
       setPlan(nextPlan);
       if (!nextPlan.storage_available) {
-        setPlanError("Presupuestos usando respaldo local hasta aplicar migración.");
+        setPlanError("Tus presupuestos están guardados en este dispositivo y se sincronizarán automáticamente.");
       }
     } catch {
       setPlan(local);
-      setPlanError("Presupuestos usando respaldo local hasta reconectar.");
+      setPlanError("Sin conexión: tus presupuestos quedaron guardados en este dispositivo.");
     } finally {
       setPlanLoading(false);
     }
@@ -256,6 +256,19 @@ export default function FinanzasPersonalesIsland() {
     fetchData(currentMonth);
     fetchMonthlyPlan(currentMonth);
   }, [currentMonth, fetchData, fetchMonthlyPlan]);
+
+  // Close modals with Escape
+  useEffect(() => {
+    if (!editingPlan && !reclassifyTarget) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setEditingPlan(false);
+        setReclassifyTarget(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editingPlan, reclassifyTarget]);
 
   const goPrevMonth = () => {
     const prev = new Date(currentMonth);
@@ -321,13 +334,13 @@ export default function FinanzasPersonalesIsland() {
       } else {
         nextPlan.storage_available = false;
         setPlan(nextPlan);
-        setPlanError("Guardado localmente. Falta aplicar la migración en Supabase para sincronizar.");
+        setPlanError("Guardado en este dispositivo. Se sincronizará automáticamente.");
         setEditingPlan(false);
       }
     } catch {
       nextPlan.storage_available = false;
       setPlan(nextPlan);
-      setPlanError("Guardado localmente. Se sincronizará cuando el API esté disponible.");
+      setPlanError("Guardado en este dispositivo. Se sincronizará cuando vuelva la conexión.");
       setEditingPlan(false);
     } finally {
       setSavingPlan(false);
@@ -407,7 +420,7 @@ export default function FinanzasPersonalesIsland() {
               {remainingIncome < 0 ? " · sueldo sobrepasado" : ""}
             </span>
           )}
-          {planError && <div class="fp-soft-warning">{planError}</div>}
+          {planError && <div class="fp-soft-warning" role="status">{planError}</div>}
         </section>
       </div>
 
@@ -444,7 +457,14 @@ export default function FinanzasPersonalesIsland() {
       </div>
 
       {loading && <div class="fh-empty fp-state">[CARGANDO...]</div>}
-      {error && <div class="fh-empty fp-state fp-state-error">[{error}]</div>}
+      {error && !loading && (
+        <div class="island-error-banner" role="alert">
+          <span>[NO PUDIMOS CARGAR TUS GASTOS]</span>
+          <button class="island-retry-btn" onClick={() => fetchData(currentMonth)}>
+            REINTENTAR
+          </button>
+        </div>
+      )}
 
       {data && !loading && !error && (
         <>
@@ -581,6 +601,7 @@ export default function FinanzasPersonalesIsland() {
                 inputMode="numeric"
                 value={incomeInput}
                 placeholder="1830000"
+                autoFocus
                 onInput={(e) => setIncomeInput((e.currentTarget as HTMLInputElement).value)}
               />
             </label>
@@ -607,7 +628,7 @@ export default function FinanzasPersonalesIsland() {
               {parseMoney(incomeInput) > 0 && ` de ${formatCLP(parseMoney(incomeInput))}`}
             </div>
 
-            {planError && <div class="fp-modal-error">{planError}</div>}
+            {planError && <div class="fp-modal-error" role="alert">{planError}</div>}
 
             <div class="fp-modal-actions">
               <button class="fp-secondary-btn" onClick={() => setEditingPlan(false)} disabled={savingPlan}>Cancelar</button>
@@ -653,7 +674,7 @@ export default function FinanzasPersonalesIsland() {
               })}
             </div>
 
-            {reclassifyError && <div class="fp-modal-error">{reclassifyError}</div>}
+            {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
             {savingCategory && <div class="fp-modal-total">Guardando categoría...</div>}
           </div>
         </div>
