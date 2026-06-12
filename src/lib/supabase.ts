@@ -51,3 +51,21 @@ export function createAuthClient(accessToken: string) {
     },
   );
 }
+
+/** Create a Supabase admin client using the service role key — only on server side */
+export function createServiceClient() {
+  const key = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY no configurada");
+  }
+  return createClient(
+    import.meta.env.SUPABASE_URL,
+    key,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    },
+  );
+}

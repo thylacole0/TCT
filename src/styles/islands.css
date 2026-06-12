@@ -3819,6 +3819,135 @@ button.bento-card:active {
   vertical-align: middle;
 }
 
+/* ─── Floating add button ─── */
+.fp-fab-wrap {
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  right: 24px;
+  z-index: 100;
+}
+
+.fp-fab-menu {
+  background: var(--surface);
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--space-sm);
+  overflow: hidden;
+  padding: var(--space-xs);
+}
+
+.fp-fab-menu-item {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-compact);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  gap: var(--space-sm);
+  letter-spacing: 0.08em;
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  text-transform: uppercase;
+  transition: background var(--duration-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+.fp-fab-menu-item:hover {
+  background: var(--hover);
+}
+
+.fp-fab {
+  align-items: center;
+  background: var(--text-display);
+  border: none;
+  border-radius: 50%;
+  bottom: 24px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  color: var(--black);
+  cursor: pointer;
+  display: flex;
+  height: 48px;
+  justify-content: center;
+  position: fixed;
+  right: 24px;
+  transition: opacity var(--duration-micro) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+  width: 48px;
+  z-index: 100;
+}
+
+.fp-fab:hover {
+  opacity: 0.85;
+  transform: scale(1.06);
+}
+
+.fp-fab:active {
+  transform: scale(0.94);
+}
+
+/* ─── Add expense form ─── */
+.fp-add-input {
+  background: var(--surface);
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-technical);
+  color: var(--text-display);
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  max-width: 200px;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: right;
+}
+
+.fp-add-input::placeholder {
+  color: var(--text-muted);
+}
+
+.fp-add-input:focus {
+  border-color: var(--text-display);
+  outline: none;
+}
+
+input[type="date"].fp-add-input {
+  text-align: center;
+}
+
+/* ─── Installment styles ─── */
+.fp-transaction-installment {
+  border-left: 2px solid var(--text-muted);
+}
+
+.fp-tx-installment-badge {
+  color: var(--text-disabled);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.fp-tx-installment-label {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-compact);
+  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  margin-left: var(--space-xs);
+  padding: 1px 5px;
+  text-transform: uppercase;
+}
+
+.fp-tx-installment-amount {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 /* ─── iOS: Safari hace zoom forzado al enfocar inputs con fuente < 16px ─── */
 @media (max-width: 768px) {
   .sl-add-input,

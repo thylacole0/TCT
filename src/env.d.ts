@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly SUPABASE_URL: string;
   readonly SUPABASE_ANON_KEY: string;
+  readonly SUPABASE_SERVICE_ROLE_KEY?: string;
   readonly VAPID_PUBLIC_KEY?: string;
   readonly VAPID_PRIVATE_KEY?: string;
   readonly CRON_SECRET?: string;

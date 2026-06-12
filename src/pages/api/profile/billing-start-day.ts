@@ -1,14 +1,14 @@
 import type { APIRoute } from "astro";
-import { createAuthClient } from "../../../lib/supabase";
+import { createServiceClient } from "../../../lib/supabase";
 
 /**
  * GET /api/profile/billing-start-day
- * Returns the authenticated user's billing_start_day (default 1).
- *
  * PATCH /api/profile/billing-start-day
- * Body: { billing_start_day: number }
- * Updates the user's billing cycle start day.
+ *
+ * Stores billing_start_day in the user's auth user_metadata (raw_user_meta_data)
+ * to avoid requiring DDL on the profiles table.
  */
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -22,22 +22,11 @@ export const GET: APIRoute = async ({ locals }) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const supabase = createAuthClient(locals.accessToken);
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("billing_start_day")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Read from user_metadata (set on signup or via admin API)
+  const bsd = (user.user_metadata as Record<string, unknown>)?.billing_start_day;
+  const day = typeof bsd === "number" && bsd >= 1 && bsd <= 28 ? bsd : 1;
 
-  if (error) {
-    // Column may not exist yet — return default
-    if (error.code === "42703" || String(error.message).includes("does not exist")) {
-      return json({ billing_start_day: 1 });
-    }
-    return json({ error: error.message }, 500);
-  }
-
-  return json({ billing_start_day: data?.billing_start_day ?? 1 });
+  return json({ billing_start_day: day });
 };
 
 export const PATCH: APIRoute = async ({ request, locals }) => {
@@ -57,18 +46,28 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   const billingDay = Number.isFinite(raw) ? Math.round(raw) : NaN;
 
   if (!Number.isFinite(billingDay) || billingDay < 1 || billingDay > 28) {
-    return json({ error: "billing_start_day must be between 1 and 28" }, 400);
+    return json({ error: "billing_start_day debe estar entre 1 y 28" }, 400);
   }
 
-  const supabase = createAuthClient(locals.accessToken);
-  const { error } = await supabase
-    .from("profiles")
-    .update({ billing_start_day: billingDay })
-    .eq("id", user.id);
+  try {
+    const adminClient = createServiceClient();
+    const { data, error } = await adminClient.auth.admin.updateUserById(
+      user.id,
+      {
+        user_metadata: {
+          ...(user.user_metadata as Record<string, unknown>),
+          billing_start_day: billingDay,
+        },
+      },
+    );
 
-  if (error) {
-    return json({ error: error.message }, 500);
+    if (error) {
+      return json({ error: error.message }, 500);
+    }
+
+    return json({ ok: true, billing_start_day: billingDay });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error desconocido";
+    return json({ error: msg }, 500);
   }
-
-  return json({ ok: true, billing_start_day: billingDay });
 };

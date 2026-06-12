@@ -25,12 +25,26 @@ interface CategoryGroup {
   transactions: PersonalTransaction[];
 }
 
+interface InstallmentEntry {
+  id: string;
+  merchant: string;
+  description: string | null;
+  category: string;
+  monthly_amount: number;
+  current_installment: number;
+  total_installments: number;
+  start_month: string;
+}
+
 interface ByCategoryResponse {
   categories: CategoryGroup[];
   total_spent: number;
+  transaction_total?: number;
+  installment_total?: number;
   from: string;
   to: string;
   billing_start_day?: number;
+  installments?: InstallmentEntry[];
 }
 
 interface MonthlyPlan {
@@ -219,6 +233,22 @@ export default function FinanzasPersonalesIsland() {
   const [billingStartDay, setBillingStartDay] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addMerchant, setAddMerchant] = useState("");
+  const [addAmount, setAddAmount] = useState("");
+  const [addCategory, setAddCategory] = useState("Otros");
+  const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [adding, setAdding] = useState(false);
+  const [installments, setInstallments] = useState<InstallmentEntry[]>([]);
+  const [showFabMenu, setShowFabMenu] = useState(false);
+  // Installment form
+  const [showInstModal, setShowInstModal] = useState(false);
+  const [instMerchant, setInstMerchant] = useState("");
+  const [instAmount, setInstAmount] = useState("");
+  const [instQty, setInstQty] = useState("3");
+  const [instCategory, setInstCategory] = useState("Otros");
+  const [instStartMonth, setInstStartMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [savingInst, setSavingInst] = useState(false);
 
   const fetchData = useCallback(async (date: Date, bsd?: number) => {
     setLoading(true);
@@ -245,6 +275,11 @@ export default function FinanzasPersonalesIsland() {
         }
       );
       setData({ ...json, categories });
+      if (json.installments) {
+        setInstallments(json.installments);
+      } else {
+        setInstallments([]);
+      }
     } catch {
       setError("Error al cargar datos");
     } finally {
@@ -286,22 +321,27 @@ export default function FinanzasPersonalesIsland() {
 
   // Close modals with Escape
   useEffect(() => {
-    if (!editingPlan && !reclassifyTarget) return;
+    if (!editingPlan && !reclassifyTarget && !deleteConfirm && !showAddModal && !showInstModal && !showFabMenu) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setEditingPlan(false);
         setReclassifyTarget(null);
+        setDeleteConfirm(null);
+        setShowAddModal(false);
+        setShowInstModal(false);
+        setShowFabMenu(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editingPlan, reclassifyTarget]);
+  }, [editingPlan, reclassifyTarget, deleteConfirm, showAddModal, showInstModal, showFabMenu]);
 
   const goPrevMonth = () => {
     const prev = new Date(currentMonth);
     prev.setMonth(prev.getMonth() - 1);
     setCurrentMonth(prev);
     setExpandedCategory(null);
+    setShowFabMenu(false);
   };
 
   const goNextMonth = () => {
@@ -309,6 +349,7 @@ export default function FinanzasPersonalesIsland() {
     next.setMonth(next.getMonth() + 1);
     setCurrentMonth(next);
     setExpandedCategory(null);
+    setShowFabMenu(false);
   };
 
   const toggleCategory = (category: string) => {
@@ -427,6 +468,74 @@ export default function FinanzasPersonalesIsland() {
       setDeleteConfirm(null);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleAddExpense = async () => {
+    if (!addMerchant.trim() || !addAmount.trim()) return;
+    setAdding(true);
+    try {
+      const res = await fetch("/api/personal-expenses/add-expense", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant: addMerchant.trim(),
+          amount: addAmount.replace(/[^0-9]/g, ""),
+          category: addCategory,
+          expense_date: addDate,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        setReclassifyError(json?.error || `Error ${res.status}`);
+        return;
+      }
+      setShowAddModal(false);
+      setAddMerchant("");
+      setAddAmount("");
+      setAddCategory("Otros");
+      setAddDate(new Date().toISOString().slice(0, 10));
+      setReclassifyError(null);
+      await fetchData(currentMonth);
+    } catch {
+      setReclassifyError("No se pudo agregar el gasto");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleAddInstallment = async () => {
+    if (!instMerchant.trim() || !instAmount.trim() || !instQty.trim()) return;
+    setSavingInst(true);
+    try {
+      const res = await fetch("/api/personal-expenses/installments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant: instMerchant.trim(),
+          total_amount: instAmount.replace(/[^0-9]/g, ""),
+          total_installments: parseInt(instQty, 10),
+          category: instCategory,
+          start_month: instStartMonth,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        setReclassifyError(json?.error || `Error ${res.status}`);
+        return;
+      }
+      setShowInstModal(false);
+      setShowFabMenu(false);
+      setInstMerchant("");
+      setInstAmount("");
+      setInstQty("3");
+      setInstCategory("Otros");
+      setReclassifyError(null);
+      await fetchData(currentMonth);
+    } catch {
+      setReclassifyError("No se pudo crear la cuota");
+    } finally {
+      setSavingInst(false);
     }
   };
 
@@ -613,7 +722,8 @@ export default function FinanzasPersonalesIsland() {
                               </div>
                             </div>
                           ) : (
-                            group.transactions.map((t) => (
+                            <>
+                            {group.transactions.map((t) => (
                               <div class="fp-transaction" key={t.id}>
                                 <div class="fp-tx-left">
                                   <span class="fp-tx-date">
@@ -639,7 +749,25 @@ export default function FinanzasPersonalesIsland() {
                                   <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
                                 </div>
                               </div>
-                            ))
+                            ))}
+                            {/* Show installments for this category */}
+                            {installments
+                              .filter((inst) => inst.category === group.category)
+                              .map((inst) => (
+                                <div class="fp-transaction fp-transaction-installment" key={`inst-${inst.id}`}>
+                                  <div class="fp-tx-left">
+                                    <span class="fp-tx-date fp-tx-installment-badge">
+                                      CUOTA {inst.current_installment}/{inst.total_installments}
+                                    </span>
+                                    <span class="fp-tx-desc">{inst.merchant}</span>
+                                    <span class="fp-tx-installment-label">CUOTA</span>
+                                  </div>
+                                  <div class="fp-tx-right">
+                                    <span class="fp-tx-amount fp-tx-installment-amount">{formatCLP(inst.monthly_amount)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                              </>
                           )}
                         </div>
                       )}
@@ -779,6 +907,220 @@ export default function FinanzasPersonalesIsland() {
                 disabled={deleting}
               >
                 {deleting ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating add button + menu */}
+      <div class="fp-fab-wrap">
+        {showFabMenu && (
+          <div class="fp-fab-menu">
+            <button
+              class="fp-fab-menu-item"
+              onClick={() => { setShowAddModal(true); setShowFabMenu(false); setReclassifyError(null); }}
+            >
+              <TctIcon name="dollarSign" size={14} variant="dots" />
+              GASTO
+            </button>
+            <button
+              class="fp-fab-menu-item"
+              onClick={() => { setShowInstModal(true); setShowFabMenu(false); setReclassifyError(null); }}
+            >
+              <TctIcon name="repeat" size={14} variant="dots" />
+              CUOTA
+            </button>
+          </div>
+        )}
+        <button
+          class="fp-fab"
+          onClick={() => setShowFabMenu((v) => !v)}
+          aria-label="Agregar"
+          title="Agregar"
+        >
+          <TctIcon name="plus" size={20} variant="dots" />
+        </button>
+      </div>
+
+      {/* Add expense modal */}
+      {showAddModal && (
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Agregar gasto">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => setShowAddModal(false)} />
+          <div class="fp-modal-sheet fp-modal-sheet-compact">
+            <div class="fp-modal-head">
+              <div>
+                <span class="fh-label">AGREGAR GASTO</span>
+                <h2>Nuevo gasto manual</h2>
+              </div>
+              <button class="fp-icon-btn" onClick={() => setShowAddModal(false)} aria-label="Cerrar">
+                <TctIcon name="x" size={18} variant="dots" />
+              </button>
+            </div>
+
+            <label class="fp-money-field">
+              <span>Comercio</span>
+              <input
+                class="fp-add-input"
+                value={addMerchant}
+                onInput={(e) => setAddMerchant((e.currentTarget as HTMLInputElement).value)}
+                placeholder="Ej: Uber Eats"
+                autoFocus
+              />
+            </label>
+
+            <label class="fp-money-field">
+              <span>Monto ($)</span>
+              <input
+                class="fp-add-input"
+                inputMode="numeric"
+                value={addAmount}
+                onInput={(e) => setAddAmount((e.currentTarget as HTMLInputElement).value)}
+                placeholder="8490"
+              />
+            </label>
+
+            <label class="fp-money-field">
+              <span>Fecha</span>
+              <input
+                class="fp-add-input"
+                type="date"
+                value={addDate}
+                onInput={(e) => setAddDate((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+
+            <div class="fp-category-options" style="margin-top: var(--space-sm)">
+              {CATEGORIES.map((cat: string) => (
+                <button
+                  class={`fp-category-option ${addCategory === cat ? "active" : ""}`}
+                  key={cat}
+                  onClick={() => setAddCategory(cat)}
+                  disabled={adding}
+                >
+                  <span class="fp-category-option-left">
+                    <span class="fp-category-dot" style={{ background: categoryColor(cat) }} />
+                    {cat}
+                  </span>
+                  {addCategory === cat && <TctIcon name="check" size={16} variant="dots" />}
+                </button>
+              ))}
+            </div>
+
+            {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
+
+            <div class="fp-modal-actions">
+              <button class="fp-secondary-btn" onClick={() => setShowAddModal(false)} disabled={adding}>
+                Cancelar
+              </button>
+              <button
+                class="fp-primary-btn"
+                onClick={handleAddExpense}
+                disabled={adding || !addMerchant.trim() || !addAmount.trim()}
+              >
+                {adding ? "Guardando..." : "Agregar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add installment modal */}
+      {showInstModal && (
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Agregar cuota">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => setShowInstModal(false)} />
+          <div class="fp-modal-sheet fp-modal-sheet-compact">
+            <div class="fp-modal-head">
+              <div>
+                <span class="fh-label">AGREGAR CUOTA</span>
+                <h2>Nuevo plan de cuotas</h2>
+              </div>
+              <button class="fp-icon-btn" onClick={() => setShowInstModal(false)} aria-label="Cerrar">
+                <TctIcon name="x" size={18} variant="dots" />
+              </button>
+            </div>
+
+            <label class="fp-money-field">
+              <span>Comercio</span>
+              <input
+                class="fp-add-input"
+                value={instMerchant}
+                onInput={(e) => setInstMerchant((e.currentTarget as HTMLInputElement).value)}
+                placeholder="Ej: Falabella"
+                autoFocus
+              />
+            </label>
+
+            <label class="fp-money-field">
+              <span>Total ($)</span>
+              <input
+                class="fp-add-input"
+                inputMode="numeric"
+                value={instAmount}
+                onInput={(e) => setInstAmount((e.currentTarget as HTMLInputElement).value)}
+                placeholder="300000"
+              />
+            </label>
+
+            <label class="fp-money-field">
+              <span>Cuotas</span>
+              <input
+                class="fp-add-input fp-add-input-sm"
+                type="number"
+                min="2"
+                max="120"
+                value={instQty}
+                onInput={(e) => setInstQty((e.currentTarget as HTMLInputElement).value)}
+                placeholder="6"
+                style="max-width:80px"
+              />
+            </label>
+
+            <label class="fp-money-field">
+              <span>Mes de inicio</span>
+              <input
+                class="fp-add-input"
+                type="month"
+                value={instStartMonth}
+                onInput={(e) => setInstStartMonth((e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+
+            {instAmount && instQty && parseInt(instQty) > 0 && (
+              <div class="fp-modal-total" style="margin-bottom:var(--space-sm)">
+                ≈ {formatCLP(Math.floor(parseInt(instAmount.replace(/[^0-9]/g, "") || "0") / parseInt(instQty)))} por cuota
+              </div>
+            )}
+
+            <div class="fp-category-options" style="margin-top: var(--space-sm)">
+              {CATEGORIES.map((cat: string) => (
+                <button
+                  class={`fp-category-option ${instCategory === cat ? "active" : ""}`}
+                  key={cat}
+                  onClick={() => setInstCategory(cat)}
+                  disabled={savingInst}
+                >
+                  <span class="fp-category-option-left">
+                    <span class="fp-category-dot" style={{ background: categoryColor(cat) }} />
+                    {cat}
+                  </span>
+                  {instCategory === cat && <TctIcon name="check" size={16} variant="dots" />}
+                </button>
+              ))}
+            </div>
+
+            {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
+
+            <div class="fp-modal-actions">
+              <button class="fp-secondary-btn" onClick={() => setShowInstModal(false)} disabled={savingInst}>
+                Cancelar
+              </button>
+              <button
+                class="fp-primary-btn"
+                onClick={handleAddInstallment}
+                disabled={savingInst || !instMerchant.trim() || !instAmount.trim() || !instQty.trim()}
+              >
+                {savingInst ? "Guardando..." : "Crear cuota"}
               </button>
             </div>
           </div>
