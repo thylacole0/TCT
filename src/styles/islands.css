@@ -3745,6 +3745,80 @@ button.bento-card:active {
   }
 }
 
+/* ─── Delete expense ─── */
+.fp-tx-right {
+  align-items: center;
+  display: flex;
+  gap: var(--space-xs);
+  padding-top: 16px;
+}
+
+.fp-tx-delete-btn {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-compact);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  transition: color var(--duration-micro) var(--ease-out), border-color var(--duration-micro) var(--ease-out);
+  width: 28px;
+}
+
+.fp-tx-delete-btn:hover,
+.fp-tx-delete-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.fp-danger-btn {
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-technical);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: var(--caption);
+  letter-spacing: 0.04em;
+  padding: 9px 14px;
+  text-transform: uppercase;
+}
+
+.fp-danger-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--black);
+}
+
+.fp-danger-btn:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.fp-modal-body {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  line-height: 1.5;
+}
+
+.fp-modal-body p {
+  margin: 0;
+}
+
+/* ─── Cycle badge ─── */
+.fp-cycle-badge {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-compact);
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  margin-left: var(--space-sm);
+  padding: 2px 6px;
+  vertical-align: middle;
+}
+
 /* ─── iOS: Safari hace zoom forzado al enfocar inputs con fuente < 16px ─── */
 @media (max-width: 768px) {
   .sl-add-input,

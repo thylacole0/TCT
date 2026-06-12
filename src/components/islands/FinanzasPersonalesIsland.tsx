@@ -1,6 +1,7 @@
 /** @jsxImportSource preact */
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { CATEGORIES, CATEGORY_COLORS, CATEGORY_ICONS } from "../../lib/personalExpenses.js";
+import { getCycleEndRef, formatDateCL } from "../../lib/dates";
 import TctIcon from "../icons/TctIcon";
 
 interface PersonalTransaction {
@@ -29,6 +30,7 @@ interface ByCategoryResponse {
   total_spent: number;
   from: string;
   to: string;
+  billing_start_day?: number;
 }
 
 interface MonthlyPlan {
@@ -84,7 +86,24 @@ function monthStart(date: Date) {
   return `${monthKey(date)}-01`;
 }
 
-function monthBounds(date: Date) {
+function monthBounds(date: Date, billingStartDay: number = 1) {
+  if (billingStartDay > 1) {
+    const d = new Date(date);
+    const day = d.getDate();
+    // Start: billingStartDay of the cycle's starting month
+    const start = new Date(d);
+    if (day < billingStartDay) {
+      start.setMonth(start.getMonth() - 1);
+    }
+    start.setDate(billingStartDay);
+    // End: (billingStartDay - 1) of the cycle's ending month
+    const end = new Date(d);
+    if (day >= billingStartDay) {
+      end.setMonth(end.getMonth() + 1);
+    }
+    end.setDate(billingStartDay - 1);
+    return { from: formatDateCL(start), to: formatDateCL(end) };
+  }
   const from = monthStart(date);
   const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const to = `${monthKey(date)}-${String(lastDay).padStart(2, "0")}`;
@@ -197,11 +216,15 @@ export default function FinanzasPersonalesIsland() {
   const [reclassifyTarget, setReclassifyTarget] = useState<PersonalTransaction | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
+  const [billingStartDay, setBillingStartDay] = useState(1);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const fetchData = useCallback(async (date: Date) => {
+  const fetchData = useCallback(async (date: Date, bsd?: number) => {
     setLoading(true);
     setError(null);
-    const { from, to } = monthBounds(date);
+    const activeBsd = bsd ?? billingStartDay;
+    const { from, to } = monthBounds(date, activeBsd);
     try {
       const res = await fetch(`/api/personal-expenses/by-category?from=${from}&to=${to}`);
       if (!res.ok) {
@@ -209,6 +232,10 @@ export default function FinanzasPersonalesIsland() {
         return;
       }
       const json: ByCategoryResponse = await res.json();
+      // Sync billing_start_day from server if not yet fetched
+      if (json.billing_start_day && json.billing_start_day !== activeBsd) {
+        setBillingStartDay(json.billing_start_day);
+      }
       const categories = CATEGORIES.map((category: string) =>
         json.categories.find((g) => g.category === category) || {
           category,
@@ -223,7 +250,7 @@ export default function FinanzasPersonalesIsland() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [billingStartDay]);
 
   const fetchMonthlyPlan = useCallback(async (date: Date) => {
     const month = monthKey(date);
@@ -376,6 +403,33 @@ export default function FinanzasPersonalesIsland() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/personal-expenses/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deleteConfirm }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        setReclassifyError(json?.error || `Error ${res.status}`);
+        setDeleteConfirm(null);
+        setDeleting(false);
+        return;
+      }
+      setDeleteConfirm(null);
+      setReclassifyError(null);
+      await fetchData(currentMonth);
+    } catch {
+      setReclassifyError("No se pudo eliminar el gasto");
+      setDeleteConfirm(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const categories = data?.categories || [];
   const monthTotal = data?.total_spent || 0;
   const hasExpenses = categories.some((g) => g.count > 0);
@@ -397,7 +451,14 @@ export default function FinanzasPersonalesIsland() {
           <button class="fp-nav-btn" onClick={goPrevMonth} aria-label="Mes anterior">
             <TctIcon name="chevronLeft" size={18} variant="dots" />
           </button>
-          <span class="fp-month-label">{monthName(currentMonth)}</span>
+          <span class="fp-month-label">
+            {billingStartDay > 1
+              ? monthName(getCycleEndRef(currentMonth, billingStartDay))
+              : monthName(currentMonth)}
+            {billingStartDay > 1 && (
+              <span class="fp-cycle-badge">CICLO {billingStartDay}-{billingStartDay - 1}</span>
+            )}
+          </span>
           <button class="fp-nav-btn" onClick={goNextMonth} aria-label="Mes siguiente">
             <TctIcon name="chevronRight" size={18} variant="dots" />
           </button>
@@ -566,7 +627,17 @@ export default function FinanzasPersonalesIsland() {
                                     <TctIcon name="chevronDown" size={12} variant="dots" />
                                   </button>
                                 </div>
-                                <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
+                                <div class="fp-tx-right">
+                                  <button
+                                    class="fp-tx-delete-btn"
+                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(t.id); }}
+                                    aria-label="Eliminar gasto"
+                                    title="Eliminar"
+                                  >
+                                    <TctIcon name="trash" size={13} variant="dots" />
+                                  </button>
+                                  <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
+                                </div>
                               </div>
                             ))
                           )}
@@ -676,6 +747,40 @@ export default function FinanzasPersonalesIsland() {
 
             {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
             {savingCategory && <div class="fp-modal-total">Guardando categoría...</div>}
+          </div>
+        </div>
+      )}
+
+      {deleteConfirm && (
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Confirmar eliminación">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => { if (!deleting) setDeleteConfirm(null); }} />
+          <div class="fp-modal-sheet fp-modal-sheet-compact">
+            <div class="fp-modal-head">
+              <div>
+                <span class="fh-label">ELIMINAR GASTO</span>
+                <h2>¿Eliminar este gasto?</h2>
+              </div>
+            </div>
+            <div class="fp-modal-body">
+              <p>Esta acción no se puede deshacer.</p>
+            </div>
+            {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
+            <div class="fp-modal-actions">
+              <button
+                class="fp-secondary-btn"
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+              >
+                Cancelar
+              </button>
+              <button
+                class="fp-danger-btn"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

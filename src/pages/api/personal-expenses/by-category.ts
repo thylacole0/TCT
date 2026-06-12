@@ -35,20 +35,34 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
   const from = fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)
     ? fromParam
-    : formatDateCL(getMonthStartChile());
+    : null; // resolved after fetching profile
 
   const to = toParam && /^\d{4}-\d{2}-\d{2}$/.test(toParam)
     ? toParam
-    : formatDateCL(getMonthEndChile());
+    : null; // resolved after fetching profile
 
   const supabase = createAuthClient(locals.accessToken);
+
+  // Fetch user's billing_start_day for default bounds
+  let billingStartDay = 1;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("billing_start_day")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.billing_start_day) {
+    billingStartDay = profile.billing_start_day;
+  }
+
+  const resolvedFrom = from ?? formatDateCL(getMonthStartChile(undefined, billingStartDay));
+  const resolvedTo = to ?? formatDateCL(getMonthEndChile(undefined, billingStartDay));
 
   const { data, error } = await supabase
     .from("personal_expenses")
     .select("id, amount, merchant, description, category, expense_date, expense_time, created_at, source, card_last4")
     .eq("user_id", user.id)
-    .gte("expense_date", from)
-    .lte("expense_date", to)
+    .gte("expense_date", resolvedFrom)
+    .lte("expense_date", resolvedTo)
     .order("expense_date", { ascending: false })
     .order("expense_time", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
@@ -62,7 +76,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
   const totalSpent = rows.reduce((sum, row) => sum + Number(row.amount), 0);
 
   return new Response(
-    JSON.stringify({ categories, total_spent: totalSpent, from, to }),
+    JSON.stringify({ categories, total_spent: totalSpent, from: resolvedFrom, to: resolvedTo, billing_start_day: billingStartDay }),
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 };

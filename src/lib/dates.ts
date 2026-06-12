@@ -59,18 +59,53 @@ export function getMondayChile(date?: Date): Date {
   return d;
 }
 
-/** Returns the 1st day of the current month in Chile timezone */
-export function getMonthStartChile(date?: Date): Date {
+/** Returns the 1st day of the current month (or billing cycle) in Chile timezone */
+export function getMonthStartChile(date?: Date, billingStartDay?: number): Date {
   const d = date ? new Date(date) : nowChile();
-  d.setDate(1);
+  if (billingStartDay && billingStartDay > 1) {
+    // Custom billing cycle: start is billingStartDay of previous month
+    // when the reference date is before billingStartDay
+    const day = d.getDate();
+    if (day < billingStartDay) {
+      d.setMonth(d.getMonth() - 1);
+    }
+    d.setDate(billingStartDay);
+  } else {
+    d.setDate(1);
+  }
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-/** Returns the last day of the month for the given date */
-export function getMonthEndChile(date?: Date): Date {
+/** Returns the last day of the month (or billing cycle) for the given date */
+export function getMonthEndChile(date?: Date, billingStartDay?: number): Date {
   const d = date ? new Date(date) : nowChile();
-  d.setMonth(d.getMonth() + 1, 0); // day 0 of next month = last day of current
+  if (billingStartDay && billingStartDay > 1) {
+    // Custom billing cycle: end is (billingStartDay - 1) of current or next month
+    const day = d.getDate();
+    if (day >= billingStartDay) {
+      d.setMonth(d.getMonth() + 1);
+    }
+    d.setDate(billingStartDay - 1);
+  } else {
+    d.setMonth(d.getMonth() + 1, 0); // day 0 of next month = last day of current
+  }
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Returns the cycle end month reference date (1st of the month when the cycle ends).
+ * Useful for navigation and display when using a custom billing start day.
+ * For billingStartDay=1, returns the 1st of the given date's month.
+ */
+export function getCycleEndRef(date?: Date, billingStartDay?: number): Date {
+  const d = date ? new Date(date) : nowChile();
+  if (billingStartDay && billingStartDay > 1 && d.getDate() >= billingStartDay) {
+    // We're in a cycle that ends next month
+    d.setMonth(d.getMonth() + 1);
+  }
+  d.setDate(1);
   d.setHours(0, 0, 0, 0);
   return d;
 }

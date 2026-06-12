@@ -106,6 +106,37 @@ const saveErrorMsg =
         </div>
       </Card>
     </section>
+
+    <!-- CICLO DE FACTURACIÓN -->
+    <section class="config-section">
+      <span class="label">CICLO DE FACTURACIÓN</span>
+      <Card padding="md">
+        <div class="billing-row">
+          <div class="billing-copy">
+            <span class="billing-title">Día de inicio del mes</span>
+            <span class="caption">Define cuándo empieza tu mes financiero. Ej: si tu tarjeta factura el 20, el ciclo empieza el 21.</span>
+          </div>
+        </div>
+        <div class="billing-control">
+          <div class="billing-input-group">
+            <span class="billing-input-label">DÍA</span>
+            <input
+              id="config-billing-day"
+              type="number"
+              min="1"
+              max="28"
+              class="billing-input"
+              placeholder="1"
+            />
+          </div>
+          <span class="billing-preview" id="config-billing-preview">CICLO: 1-31</span>
+        </div>
+        <div id="config-billing-feedback" class="config-feedback" style="display:none"></div>
+        <div class="billing-actions">
+          <button id="config-billing-save" class="billing-save-btn" type="button" disabled>GUARDAR</button>
+        </div>
+      </Card>
+    </section>
   </div>
 </Layout>
 
@@ -177,6 +208,83 @@ const saveErrorMsg =
     }
     pushBtn.disabled = false;
   });
+
+  // ─── Billing cycle ───
+  const billingInput = document.getElementById('config-billing-day') as HTMLInputElement | null;
+  const billingPreview = document.getElementById('config-billing-preview');
+  const billingSave = document.getElementById('config-billing-save') as HTMLButtonElement | null;
+  const billingFeedback = document.getElementById('config-billing-feedback');
+  let billingCurrentValue = 1;
+
+  function updateBillingPreview(day: number) {
+    if (!billingPreview) return;
+    const end = day > 1 ? day - 1 : 31;
+    const label = day > 1 ? `CICLO: ${day}-${end}` : 'CICLO: 1-31';
+    billingPreview.textContent = label;
+  }
+
+  async function loadBillingDay() {
+    try {
+      const res = await fetch('/api/profile/billing-start-day');
+      if (!res.ok) return;
+      const json = await res.json();
+      billingCurrentValue = json.billing_start_day ?? 1;
+      if (billingInput) {
+        billingInput.value = String(billingCurrentValue);
+      }
+      updateBillingPreview(billingCurrentValue);
+    } catch {
+      // ignore
+    }
+  }
+
+  billingInput?.addEventListener('input', () => {
+    const raw = parseInt(billingInput.value, 10);
+    const day = Number.isFinite(raw) ? raw : 1;
+    updateBillingPreview(day);
+    const changed = day !== billingCurrentValue;
+    if (billingSave) billingSave.disabled = !changed || !(day >= 1 && day <= 28);
+  });
+
+  billingSave?.addEventListener('click', async () => {
+    if (!billingInput || !billingSave || !billingFeedback) return;
+    const raw = parseInt(billingInput.value, 10);
+    const day = Number.isFinite(raw) ? raw : 1;
+    if (day < 1 || day > 28) return;
+
+    billingSave.disabled = true;
+    billingSave.textContent = 'GUARDANDO...';
+    billingFeedback.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/profile/billing-start-day', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billing_start_day: day }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        billingFeedback.textContent = `[${json?.error || 'ERROR AL GUARDAR'}]`;
+        billingFeedback.className = 'config-feedback config-feedback-error';
+        billingFeedback.style.display = 'block';
+        return;
+      }
+      billingCurrentValue = day;
+      billingFeedback.textContent = '[CICLO ACTUALIZADO]';
+      billingFeedback.className = 'config-feedback config-feedback-ok';
+      billingFeedback.style.display = 'block';
+      billingSave.disabled = true;
+    } catch {
+      billingFeedback.textContent = '[ERROR DE CONEXIÓN]';
+      billingFeedback.className = 'config-feedback config-feedback-error';
+      billingFeedback.style.display = 'block';
+    } finally {
+      billingSave.textContent = 'GUARDAR';
+      billingSave.disabled = true;
+    }
+  });
+
+  loadBillingDay();
 </script>
 
 <style>
@@ -466,5 +574,100 @@ const saveErrorMsg =
   .notification-btn:disabled {
     cursor: default;
     opacity: 0.45;
+  }
+
+  /* Billing cycle */
+  .billing-row {
+    align-items: flex-start;
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+  }
+
+  .billing-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .billing-title {
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: var(--body-sm);
+  }
+
+  .billing-control {
+    align-items: flex-end;
+    display: flex;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-md);
+  }
+
+  .billing-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .billing-input-label {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .billing-input {
+    background: var(--surface);
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-technical);
+    color: var(--text-display);
+    font-family: var(--font-mono);
+    font-size: var(--body);
+    max-width: 80px;
+    padding: var(--space-sm) var(--space-md);
+    text-align: center;
+  }
+
+  .billing-input:focus {
+    border-color: var(--text-display);
+    outline: none;
+  }
+
+  .billing-preview {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--caption);
+    letter-spacing: 0.06em;
+    padding-bottom: 2px;
+  }
+
+  .billing-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--space-md);
+  }
+
+  .billing-save-btn {
+    background: var(--text-display);
+    border: 1px solid var(--text-display);
+    border-radius: var(--radius-technical);
+    color: var(--black);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: var(--space-xs) var(--space-md);
+    text-transform: uppercase;
+    transition: opacity var(--duration-micro) var(--ease-out);
+  }
+
+  .billing-save-btn:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+
+  .billing-save-btn:disabled {
+    cursor: default;
+    opacity: 0.35;
   }
 </style>
