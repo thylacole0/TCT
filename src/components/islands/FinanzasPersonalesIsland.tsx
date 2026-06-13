@@ -231,7 +231,7 @@ export default function FinanzasPersonalesIsland() {
   const [savingCategory, setSavingCategory] = useState(false);
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
   const [billingStartDay, setBillingStartDay] = useState(1);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; kind: "expense" | "installment" } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addMerchant, setAddMerchant] = useState("");
@@ -446,25 +446,41 @@ export default function FinanzasPersonalesIsland() {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
+    const { id, kind } = deleteConfirm;
     setDeleting(true);
     try {
-      const res = await fetch("/api/personal-expenses/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deleteConfirm }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        setReclassifyError(json?.error || `Error ${res.status}`);
-        setDeleteConfirm(null);
-        setDeleting(false);
-        return;
+      if (kind === "installment") {
+        const res = await fetch("/api/personal-expenses/installments", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          setReclassifyError(json?.error || `Error ${res.status}`);
+          setDeleteConfirm(null);
+          setDeleting(false);
+          return;
+        }
+      } else {
+        const res = await fetch("/api/personal-expenses/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => null);
+          setReclassifyError(json?.error || `Error ${res.status}`);
+          setDeleteConfirm(null);
+          setDeleting(false);
+          return;
+        }
       }
       setDeleteConfirm(null);
       setReclassifyError(null);
       await fetchData(currentMonth);
     } catch {
-      setReclassifyError("No se pudo eliminar el gasto");
+      setReclassifyError("No se pudo eliminar");
       setDeleteConfirm(null);
     } finally {
       setDeleting(false);
@@ -560,14 +576,35 @@ export default function FinanzasPersonalesIsland() {
           <button class="fp-nav-btn" onClick={goPrevMonth} aria-label="Mes anterior">
             <TctIcon name="chevronLeft" size={18} variant="dots" />
           </button>
-          <span class="fp-month-label">
+          <button
+            class="fp-month-label-btn"
+            onClick={() => {
+              const input = document.getElementById("fp-month-picker") as HTMLInputElement | null;
+              input?.showPicker?.();
+            }}
+            aria-label="Seleccionar mes directamente"
+          >
             {billingStartDay > 1
               ? monthName(getCycleEndRef(currentMonth, billingStartDay))
               : monthName(currentMonth)}
             {billingStartDay > 1 && (
               <span class="fp-cycle-badge">CICLO {billingStartDay}-{billingStartDay - 1}</span>
             )}
-          </span>
+          </button>
+          <input
+            id="fp-month-picker"
+            type="month"
+            class="fp-month-input-hidden"
+            value={monthKey(currentMonth)}
+            onInput={(e) => {
+              const val = (e.currentTarget as HTMLInputElement).value;
+              if (/^\d{4}-\d{2}$/.test(val)) {
+                const [y, m] = val.split("-").map(Number);
+                setCurrentMonth(new Date(y, m - 1, 15));
+              }
+            }}
+            aria-hidden="true"
+          />
           <button class="fp-nav-btn" onClick={goNextMonth} aria-label="Mes siguiente">
             <TctIcon name="chevronRight" size={18} variant="dots" />
           </button>
@@ -740,7 +777,7 @@ export default function FinanzasPersonalesIsland() {
                                 <div class="fp-tx-right">
                                   <button
                                     class="fp-tx-delete-btn"
-                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(t.id); }}
+                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: t.id, kind: "expense" }); }}
                                     aria-label="Eliminar gasto"
                                     title="Eliminar"
                                   >
@@ -763,6 +800,14 @@ export default function FinanzasPersonalesIsland() {
                                     <span class="fp-tx-installment-label">CUOTA</span>
                                   </div>
                                   <div class="fp-tx-right">
+                                    <button
+                                      class="fp-tx-delete-btn"
+                                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: inst.id, kind: "installment" }); setReclassifyError(null); }}
+                                      aria-label="Eliminar cuota"
+                                      title="Eliminar cuota"
+                                    >
+                                      <TctIcon name="trash" size={13} variant="dots" />
+                                    </button>
                                     <span class="fp-tx-amount fp-tx-installment-amount">{formatCLP(inst.monthly_amount)}</span>
                                   </div>
                                 </div>
@@ -885,12 +930,14 @@ export default function FinanzasPersonalesIsland() {
           <div class="fp-modal-sheet fp-modal-sheet-compact">
             <div class="fp-modal-head">
               <div>
-                <span class="fh-label">ELIMINAR GASTO</span>
-                <h2>¿Eliminar este gasto?</h2>
+                <span class="fh-label">{deleteConfirm?.kind === "installment" ? "ELIMINAR CUOTA" : "ELIMINAR GASTO"}</span>
+                <h2>{deleteConfirm?.kind === "installment" ? "¿Eliminar esta cuota?" : "¿Eliminar este gasto?"}</h2>
               </div>
             </div>
             <div class="fp-modal-body">
-              <p>Esta acción no se puede deshacer.</p>
+              <p>{deleteConfirm?.kind === "installment"
+                ? "Esta acción no se puede deshacer. La cuota dejará de aparecer en tus finanzas."
+                : "Esta acción no se puede deshacer."}</p>
             </div>
             {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
             <div class="fp-modal-actions">

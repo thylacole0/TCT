@@ -3118,14 +3118,30 @@ button.bento-card:active {
   background: var(--surface-raised);
 }
 
-.fp-month-label {
+.fp-month-label-btn {
+  background: none;
+  border: none;
   color: var(--text-display);
+  cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--body-sm);
   letter-spacing: 0.035em;
   min-width: 150px;
   text-align: center;
   text-transform: uppercase;
+  padding: var(--space-xs) 0;
+}
+
+.fp-month-label-btn:hover {
+  color: var(--interactive);
+}
+
+.fp-month-input-hidden {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
 }
 
 .fp-income-card {
@@ -3713,7 +3729,7 @@ button.bento-card:active {
 }
 
 @media (max-width: 480px) {
-  .fp-month-label {
+  .fp-month-label-btn {
     min-width: 128px;
     font-size: var(--caption);
   }
@@ -3870,15 +3886,12 @@ button.bento-card:active {
   background: var(--text-display);
   border: none;
   border-radius: 50%;
-  bottom: 24px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.35);
   color: var(--black);
   cursor: pointer;
   display: flex;
   height: 48px;
   justify-content: center;
-  position: fixed;
-  right: 24px;
   transition: opacity var(--duration-micro) var(--ease-out), transform var(--duration-micro) var(--ease-out);
   width: 48px;
   z-index: 100;
