@@ -3316,6 +3316,13 @@ button.bento-card:active {
   margin-bottom: var(--space-sm);
 }
 
+.fp-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
 .fp-merchant-list,
 .fp-category-list {
   display: flex;
@@ -3488,6 +3495,12 @@ button.bento-card:active {
   white-space: nowrap;
 }
 
+.fp-tx-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
 .fp-tx-category-btn {
   align-items: center;
   align-self: flex-start;
@@ -3508,6 +3521,11 @@ button.bento-card:active {
 .fp-tx-category-btn:focus-visible {
   border-color: var(--text-display);
   color: var(--text-display);
+}
+
+.fp-tx-installment-action {
+  border-style: dashed;
+  color: var(--text-disabled);
 }
 
 .fp-tx-amount {
@@ -3616,7 +3634,8 @@ button.bento-card:active {
   width: 8px;
 }
 
-.fp-money-field input {
+.fp-money-field input,
+.fp-money-field select {
   background: var(--surface);
   border: 1px solid var(--border-visible);
   border-radius: var(--radius-technical);
@@ -3734,6 +3753,11 @@ button.bento-card:active {
     font-size: var(--caption);
   }
 
+  .fp-cycle-badge {
+    display: block;
+    margin: 4px 0 0;
+  }
+
   .fp-income-strip {
     padding-left: var(--space-sm);
   }
@@ -3744,6 +3768,7 @@ button.bento-card:active {
 
   .fp-inline-action {
     margin-right: 0;
+    min-height: 34px;
     padding: 5px 7px;
   }
 
@@ -3752,12 +3777,35 @@ button.bento-card:active {
     flex-direction: column;
   }
 
+  .fp-section-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .fp-cycle-editor-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fp-cycle-fields {
+    grid-template-columns: 1fr;
+  }
+
   .fp-merchant-total {
     font-size: var(--body-sm);
   }
 
+  .fp-transaction {
+    margin-left: 0;
+  }
+
+  .fp-tx-right {
+    flex-direction: column-reverse;
+    padding-top: 0;
+  }
+
   .fp-tx-amount {
-    padding-top: 18px;
+    padding-top: 0;
   }
 }
 
@@ -3823,7 +3871,7 @@ button.bento-card:active {
   margin: 0;
 }
 
-/* ─── Cycle badge ─── */
+/* ─── Cycle controls ─── */
 .fp-cycle-badge {
   border: 1px solid var(--border);
   border-radius: var(--radius-compact);
@@ -3835,75 +3883,71 @@ button.bento-card:active {
   vertical-align: middle;
 }
 
-/* ─── Floating add button ─── */
-.fp-fab-wrap {
-  bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  right: 24px;
-  z-index: 100;
+.fp-cycle-subtle {
+  color: var(--text-disabled);
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  margin-top: 3px;
 }
 
-.fp-fab-menu {
-  background: var(--surface);
-  border: 1px solid var(--border-visible);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: var(--space-sm);
-  overflow: hidden;
-  padding: var(--space-xs);
-}
-
-.fp-fab-menu-item {
-  align-items: center;
-  background: none;
-  border: none;
+.fp-cycle-editor {
+  border: 1px solid var(--border);
   border-radius: var(--radius-compact);
-  color: var(--text-primary);
-  cursor: pointer;
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm);
+}
+
+.fp-cycle-editor-head {
+  align-items: center;
+  color: var(--text-disabled);
   display: flex;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   gap: var(--space-sm);
-  letter-spacing: 0.08em;
-  padding: var(--space-sm) var(--space-md);
-  text-align: left;
-  text-transform: uppercase;
-  transition: background var(--duration-micro) var(--ease-out);
-  white-space: nowrap;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
 }
 
-.fp-fab-menu-item:hover {
-  background: var(--hover);
-}
-
-.fp-fab {
-  align-items: center;
-  background: var(--text-display);
-  border: none;
-  border-radius: 50%;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-  color: var(--black);
-  cursor: pointer;
+.fp-cycle-presets {
   display: flex;
-  height: 48px;
-  justify-content: center;
-  transition: opacity var(--duration-micro) var(--ease-out), transform var(--duration-micro) var(--ease-out);
-  width: 48px;
-  z-index: 100;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
 }
 
-.fp-fab:hover {
-  opacity: 0.85;
-  transform: scale(1.06);
+.fp-chip-btn {
+  background: var(--surface);
+  border: 1px solid var(--border-visible);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 5px 8px;
 }
 
-.fp-fab:active {
-  transform: scale(0.94);
+.fp-chip-btn:hover,
+.fp-chip-btn:focus-visible {
+  border-color: var(--text-display);
+  color: var(--text-display);
+}
+
+.fp-cycle-fields {
+  display: grid;
+  gap: var(--space-sm);
+  grid-template-columns: 1fr 1fr;
+}
+
+.fp-modal-warning {
+  border: 1px solid rgba(255, 184, 0, 0.35);
+  color: var(--warning);
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  line-height: 1.45;
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm);
 }
 
 /* ─── Add expense form ─── */
@@ -3961,6 +4005,35 @@ input[type="date"].fp-add-input {
   font-weight: 600;
 }
 
+@media (max-width: 480px) {
+  .fp-cycle-badge {
+    display: block;
+    margin: 4px 0 0;
+  }
+
+  .fp-cycle-editor-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fp-cycle-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .fp-transaction {
+    margin-left: 0;
+  }
+
+  .fp-tx-right {
+    flex-direction: column-reverse;
+    padding-top: 0;
+  }
+
+  .fp-tx-amount {
+    padding-top: 0;
+  }
+}
+
 /* ─── iOS: Safari hace zoom forzado al enfocar inputs con fuente < 16px ─── */
 @media (max-width: 768px) {
   .sl-add-input,
@@ -3968,6 +4041,7 @@ input[type="date"].fp-add-input {
   .sl-buy-input,
   .wt-date-input,
   .fp-money-field input,
+  .fp-money-field select,
   .ai-meal-input,
   .ai-meal-pref {
     font-size: 16px;

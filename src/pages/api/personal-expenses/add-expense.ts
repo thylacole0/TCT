@@ -3,7 +3,6 @@ import { createAuthClient } from "../../../lib/supabase";
 import { CATEGORIES } from "../../../lib/personalExpenses.js";
 
 const ALLOWED_CATEGORIES = CATEGORIES as readonly string[];
-const ALLOWED_SOURCES = ["banco_falabella", "google_pay", "telegram", "manual", "unknown"];
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

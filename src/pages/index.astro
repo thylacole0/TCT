@@ -2,7 +2,17 @@
 import Layout from '../layouts/Layout.astro';
 import TctIcon from '../components/icons/TctIcon';
 import { createAuthClient } from '../lib/supabase';
-import { nowChile, todayChile, getMondayChile, formatDateCL, hourChile } from '../lib/dates';
+import {
+  cycleKeyFromDate,
+  formatDateCL,
+  formatPersonalCycleLabel,
+  getMondayChile,
+  getPersonalCycleBounds,
+  hourChile,
+  normalizePersonalBillingCycle,
+  nowChile,
+  todayChile,
+} from '../lib/dates';
 
 const { user, accessToken } = Astro.locals;
 if (!user || !accessToken) return Astro.redirect('/signin');
@@ -11,6 +21,14 @@ const supabase = createAuthClient(accessToken);
 
 // Current month boundaries (Chile timezone)
 const now = nowChile();
+const personalBillingCycle = normalizePersonalBillingCycle(
+  (user.user_metadata as Record<string, unknown> | undefined)?.personal_billing_cycle,
+  (user.user_metadata as Record<string, unknown> | undefined)?.billing_start_day
+);
+const personalCycleKey = cycleKeyFromDate(now, personalBillingCycle);
+const personalCycleBounds = getPersonalCycleBounds(personalCycleKey, personalBillingCycle);
+const personalMonthStart = `${personalCycleKey}-01`;
+const personalPeriodLabel = formatPersonalCycleLabel(personalCycleBounds.from, personalCycleBounds.to);
 
 // Current week budget (Chile timezone)
 const weekStart = getMondayChile();
@@ -23,7 +41,17 @@ const currentMeal = hour < 10 ? 'Desayuno' : hour < 16 ? 'Almuerzo' : 'Once';
 const weekLabel = `${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} — ${weekEnd.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`.toUpperCase();
 
 // Parallel fetch all independent queries
-const [profilesRes, budgetRes, recentExpensesRes, todaysMealsRes, mealTypesRes, weightRes] = await Promise.all([
+const [
+  profilesRes,
+  budgetRes,
+  recentExpensesRes,
+  todaysMealsRes,
+  mealTypesRes,
+  weightRes,
+  personalSettingsRes,
+  personalExpensesRes,
+  personalInstallmentsRes,
+] = await Promise.all([
   supabase.from('profiles').select('*'),
   supabase.from('budget_weeks').select('*').eq('week_start', weekStartStr).eq('budget_type', 'comida').single(),
   supabase.from('expenses')
@@ -37,6 +65,20 @@ const [profilesRes, budgetRes, recentExpensesRes, todaysMealsRes, mealTypesRes, 
     .eq('user_id', user.id)
     .order('log_date', { ascending: false })
     .limit(4),
+  supabase.from('personal_monthly_settings')
+    .select('monthly_income')
+    .eq('user_id', user.id)
+    .eq('month_start', personalMonthStart)
+    .maybeSingle(),
+  supabase.from('personal_expenses')
+    .select('amount')
+    .eq('user_id', user.id)
+    .gte('expense_date', personalCycleBounds.from)
+    .lte('expense_date', personalCycleBounds.to),
+  supabase.from('personal_installments')
+    .select('total_amount,total_installments,start_month')
+    .eq('user_id', user.id)
+    .lte('start_month', personalCycleKey),
 ]);
 
 const profiles = profilesRes.data;
@@ -97,7 +139,45 @@ weekExpensesList.forEach(e => {
 const maxDaily = Math.max(...Object.values(dailySpending), 1);
 
 // Format CLP
-const formatCLP = (n: number) => `$${n.toLocaleString('es-CL')}`;
+const formatCLP = (n: number) => `$${Math.round(n).toLocaleString('es-CL')}`;
+
+const monthDiff = (fromMonth: string, toMonth: string): number => {
+  const [fy, fm] = fromMonth.split('-').map(Number);
+  const [ty, tm] = toMonth.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm);
+};
+
+const installmentAmountForMonth = (totalAmount: number, totalInstallments: number, currentInstallment: number): number => {
+  const base = Math.floor(totalAmount / totalInstallments);
+  return currentInstallment === totalInstallments
+    ? base + (totalAmount - base * totalInstallments)
+    : base;
+};
+
+const personalIncome = personalSettingsRes.error ? 0 : Number(personalSettingsRes.data?.monthly_income || 0);
+const personalExpenseTotal = personalExpensesRes.error
+  ? 0
+  : (personalExpensesRes.data || []).reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0);
+const personalInstallmentTotal = personalInstallmentsRes.error
+  ? 0
+  : (personalInstallmentsRes.data || []).reduce((sum: number, inst: any) => {
+    const totalInstallments = Number(inst.total_installments) || 0;
+    const totalAmount = Number(inst.total_amount) || 0;
+    const elapsed = monthDiff(String(inst.start_month || ''), personalCycleKey);
+    if (
+      totalInstallments <= 0 ||
+      totalAmount <= 0 ||
+      !Number.isFinite(elapsed) ||
+      elapsed < 0 ||
+      elapsed >= totalInstallments
+    ) return sum;
+    return sum + installmentAmountForMonth(totalAmount, totalInstallments, elapsed + 1);
+  }, 0);
+const personalSpent = personalExpenseTotal + personalInstallmentTotal;
+const personalRemaining = personalIncome - personalSpent;
+const personalPctRaw = personalIncome > 0 ? (personalSpent / personalIncome) * 100 : 0;
+const personalPct = Math.min(personalPctRaw, 100);
+const showPersonalSummary = personalIncome > 0;
 
 // Greeting based on time
 const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -110,6 +190,13 @@ const budgetSegs = Array.from({ length: 20 }, (_, i) => {
   const segPct = ((i + 1) / 20) * 100;
   const filled = segPct <= budgetPct;
   const color = budgetOverflow ? 'var(--accent)' : budgetPct > 75 ? 'var(--warning)' : 'var(--text-display)';
+  return { filled, color };
+});
+
+const personalSegs = Array.from({ length: 20 }, (_, i) => {
+  const segPct = ((i + 1) / 20) * 100;
+  const filled = segPct <= personalPct;
+  const color = personalRemaining < 0 ? 'var(--accent)' : personalPctRaw > 80 ? 'var(--warning)' : 'var(--text-display)';
   return { filled, color };
 });
 
@@ -151,6 +238,40 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
         </div>
       </div>
     </div>
+
+    {showPersonalSummary && (
+      <div class="dash-card dash-card-personal dot-grid-subtle">
+        <div class="dash-card-header">
+          <div class="dash-card-label">GASTO PERSONAL</div>
+          <span class="dash-week-label">{personalPeriodLabel}</span>
+        </div>
+        <div class="dash-budget-hero">
+          <div class="dash-budget-spent">
+            <span class="dash-budget-amount" style={personalRemaining < 0 ? 'color: var(--accent);' : ''}>{formatCLP(personalSpent)}</span>
+            <span class="dash-budget-of">DE {formatCLP(personalIncome)}</span>
+          </div>
+          <div class="dash-budget-stats">
+            <div class="dash-stat">
+              <span class="dash-stat-label">RESTANTE</span>
+              <span class="dash-stat-value" style={personalRemaining < 0 ? 'color: var(--accent);' : 'color: var(--success);'}>{formatCLP(personalRemaining)}</span>
+            </div>
+            <div class="dash-stat">
+              <span class="dash-stat-label">USADO</span>
+              <span class="dash-stat-value">{Math.round(personalPctRaw)}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="dash-budget-bar" aria-label={`Uso del sueldo personal: ${Math.round(personalPctRaw)}%`}>
+          {personalSegs.map((seg) =>
+            <div class={`dash-bar-seg ${seg.filled ? 'dash-bar-seg-on' : ''}`} style={seg.filled ? `background: ${seg.color};` : ''} />
+          )}
+        </div>
+        <a href="/finanzas/personales" class="dash-card-link">
+          <span>VER FINANZAS PERSONALES</span>
+          <TctIcon name="arrowRight" size={12} variant="dots" />
+        </a>
+      </div>
+    )}
 
     <!-- BUDGET HERO -->
     <div class="dash-card dash-card-budget dot-grid-subtle">
@@ -455,7 +576,8 @@ const expenseLogsSerialized = recentExpenses.map((exp: any) => ({
   }
 
   /* Budget Hero */
-  .dash-card-budget {
+  .dash-card-budget,
+  .dash-card-personal {
     background: var(--surface-raised);
   }
 

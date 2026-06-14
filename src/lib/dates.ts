@@ -120,3 +120,127 @@ export function monthBoundsChile(): { monthStart: string; monthEnd: string } {
     monthEnd: end.toISOString(),
   };
 }
+
+export type BillingCycleDay = number | "last";
+
+export interface PersonalBillingCycle {
+  start_day: BillingCycleDay;
+  end_day: BillingCycleDay;
+}
+
+export const DEFAULT_PERSONAL_BILLING_CYCLE: PersonalBillingCycle = {
+  start_day: 1,
+  end_day: "last",
+};
+
+const CYCLE_KEY_RE = /^\d{4}-\d{2}$/;
+
+function isCycleDay(value: unknown): value is BillingCycleDay {
+  if (value === "last") return true;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 31;
+}
+
+function coerceCycleDay(value: unknown): BillingCycleDay | null {
+  if (value === "last") return "last";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const day = Math.round(value);
+    return day >= 1 && day <= 31 ? day : null;
+  }
+  if (typeof value === "string") {
+    if (value.trim().toLowerCase() === "last") return "last";
+    const day = Number(value);
+    if (Number.isFinite(day)) {
+      const rounded = Math.round(day);
+      return rounded >= 1 && rounded <= 31 ? rounded : null;
+    }
+  }
+  return null;
+}
+
+export function daysInMonth(year: number, monthIndex: number): number {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+export function resolveBillingCycleDay(day: BillingCycleDay, year: number, monthIndex: number): number {
+  return day === "last" ? daysInMonth(year, monthIndex) : Math.min(day, daysInMonth(year, monthIndex));
+}
+
+export function normalizePersonalBillingCycle(raw: unknown, legacyStartDay?: unknown): PersonalBillingCycle {
+  if (raw && typeof raw === "object") {
+    const cycle = raw as Record<string, unknown>;
+    const start = coerceCycleDay(cycle.start_day);
+    const end = coerceCycleDay(cycle.end_day);
+    if (start && end) {
+      return { start_day: start, end_day: end };
+    }
+  }
+
+  const legacy = coerceCycleDay(legacyStartDay);
+  if (isCycleDay(legacy)) {
+    if (legacy === "last") {
+      return { start_day: 1, end_day: "last" };
+    }
+    return {
+      start_day: legacy,
+      end_day: legacy > 1 ? legacy - 1 : "last",
+    };
+  }
+
+  return DEFAULT_PERSONAL_BILLING_CYCLE;
+}
+
+function parseCycleKey(cycleKey: string): { year: number; monthIndex: number } {
+  if (!CYCLE_KEY_RE.test(cycleKey)) {
+    const now = nowChile();
+    return { year: now.getFullYear(), monthIndex: now.getMonth() };
+  }
+  const [year, month] = cycleKey.split("-").map(Number);
+  return { year, monthIndex: month - 1 };
+}
+
+function addMonths(year: number, monthIndex: number, delta: number): { year: number; monthIndex: number } {
+  const d = new Date(year, monthIndex + delta, 1);
+  return { year: d.getFullYear(), monthIndex: d.getMonth() };
+}
+
+export function getPersonalCycleBounds(cycleKey: string, cycle: PersonalBillingCycle): { from: string; to: string } {
+  const normalized = normalizePersonalBillingCycle(cycle);
+  const { year, monthIndex } = parseCycleKey(cycleKey);
+  const endDay = resolveBillingCycleDay(normalized.end_day, year, monthIndex);
+  const end = new Date(year, monthIndex, endDay);
+
+  // Non-overlap semantics for "último día → último día": it means the full calendar month.
+  if (normalized.start_day === "last" && normalized.end_day === "last") {
+    const start = new Date(year, monthIndex, 1);
+    return { from: formatDateCL(start), to: formatDateCL(end) };
+  }
+
+  const startDayInClosingMonth = resolveBillingCycleDay(normalized.start_day, year, monthIndex);
+  const startsPreviousMonth = startDayInClosingMonth > endDay;
+  const startMonth = startsPreviousMonth ? addMonths(year, monthIndex, -1) : { year, monthIndex };
+  const startDay = resolveBillingCycleDay(normalized.start_day, startMonth.year, startMonth.monthIndex);
+  const start = new Date(startMonth.year, startMonth.monthIndex, startDay);
+
+  return { from: formatDateCL(start), to: formatDateCL(end) };
+}
+
+export function cycleKeyFromDate(date: Date = nowChile(), cycle: PersonalBillingCycle = DEFAULT_PERSONAL_BILLING_CYCLE): string {
+  const normalized = normalizePersonalBillingCycle(cycle);
+  const d = new Date(date);
+  const endDay = resolveBillingCycleDay(normalized.end_day, d.getFullYear(), d.getMonth());
+
+  if (normalized.end_day === "last" || d.getDate() <= endDay) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  const close = addMonths(d.getFullYear(), d.getMonth(), 1);
+  return `${close.year}-${String(close.monthIndex + 1).padStart(2, "0")}`;
+}
+
+export function formatPersonalCycleLabel(from: string, to: string): string {
+  const fmt = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-CL", {
+    day: "2-digit",
+    month: "short",
+  }).replace(".", "").toUpperCase();
+  return `${fmt(from)} — ${fmt(to)}`;
+}

@@ -26,8 +26,10 @@ if (Astro.request.method === 'POST') {
     if (!displayName) {
       return Astro.redirect('/config?error=empty');
     }
-    const { error } = await supabase.from('profiles').update({ display_name: displayName }).eq('id', user.id);
-    return Astro.redirect(error ? '/config?error=save' : '/config?saved=1');
+    if ((await supabase.from('profiles').update({ display_name: displayName }).eq('id', user.id)).error) {
+      return Astro.redirect('/config?error=save');
+    }
+    return Astro.redirect('/config?saved=1');
   }
 
   return Astro.redirect('/config');

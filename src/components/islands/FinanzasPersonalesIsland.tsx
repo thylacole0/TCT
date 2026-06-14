@@ -1,7 +1,14 @@
 /** @jsxImportSource preact */
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { CATEGORIES, CATEGORY_COLORS, CATEGORY_ICONS } from "../../lib/personalExpenses.js";
-import { getCycleEndRef, formatDateCL } from "../../lib/dates";
+import {
+  cycleKeyFromDate,
+  formatPersonalCycleLabel,
+  getPersonalCycleBounds,
+  normalizePersonalBillingCycle,
+  type BillingCycleDay,
+  type PersonalBillingCycle,
+} from "../../lib/dates";
 import TctIcon from "../icons/TctIcon";
 
 interface PersonalTransaction {
@@ -30,7 +37,9 @@ interface InstallmentEntry {
   merchant: string;
   description: string | null;
   category: string;
+  total_amount: number;
   monthly_amount: number;
+  base_monthly_amount?: number;
   current_installment: number;
   total_installments: number;
   start_month: string;
@@ -43,7 +52,10 @@ interface ByCategoryResponse {
   installment_total?: number;
   from: string;
   to: string;
+  cycle_key?: string;
   billing_start_day?: number;
+  billing_end_day?: BillingCycleDay;
+  billing_cycle?: PersonalBillingCycle;
   installments?: InstallmentEntry[];
 }
 
@@ -100,28 +112,57 @@ function monthStart(date: Date) {
   return `${monthKey(date)}-01`;
 }
 
-function monthBounds(date: Date, billingStartDay: number = 1) {
-  if (billingStartDay > 1) {
-    const d = new Date(date);
-    const day = d.getDate();
-    // Start: billingStartDay of the cycle's starting month
-    const start = new Date(d);
-    if (day < billingStartDay) {
-      start.setMonth(start.getMonth() - 1);
-    }
-    start.setDate(billingStartDay);
-    // End: (billingStartDay - 1) of the cycle's ending month
-    const end = new Date(d);
-    if (day >= billingStartDay) {
-      end.setMonth(end.getMonth() + 1);
-    }
-    end.setDate(billingStartDay - 1);
-    return { from: formatDateCL(start), to: formatDateCL(end) };
-  }
-  const from = monthStart(date);
-  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  const to = `${monthKey(date)}-${String(lastDay).padStart(2, "0")}`;
-  return { from, to };
+const DEFAULT_BILLING_CYCLE: PersonalBillingCycle = { start_day: 1, end_day: "last" };
+
+function cycleDateFromKey(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year, month - 1, 15);
+}
+
+function currentCycleDate(cycle: PersonalBillingCycle = DEFAULT_BILLING_CYCLE) {
+  return cycleDateFromKey(cycleKeyFromDate(new Date(), cycle));
+}
+
+function cycleDayLabel(day: BillingCycleDay) {
+  return day === "last" ? "ÚLTIMO DÍA" : `DÍA ${day}`;
+}
+
+function cycleDayInputValue(day: BillingCycleDay) {
+  return day === "last" ? "last" : String(day);
+}
+
+function parseCycleDayInput(value: string): BillingCycleDay | null {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed === "last" || trimmed === "ultimo" || trimmed === "último") return "last";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return null;
+  const day = Math.round(n);
+  return day >= 1 && day <= 31 ? day : null;
+}
+
+function cycleConfigLabel(cycle: PersonalBillingCycle) {
+  return `${cycleDayLabel(cycle.start_day)} → ${cycleDayLabel(cycle.end_day)}`;
+}
+
+function installmentPreview(total: number, qty: number) {
+  if (total <= 0 || qty <= 0) return null;
+  const base = Math.floor(total / qty);
+  const last = base + (total - base * qty);
+  return { base, last };
+}
+
+function sameCycle(a: PersonalBillingCycle, b: PersonalBillingCycle) {
+  return a.start_day === b.start_day && a.end_day === b.end_day;
+}
+
+function txToInstallmentDefaults(t: PersonalTransaction) {
+  return {
+    merchant: transactionTitle(t),
+    amount: String(Math.round(Number(t.amount) || 0)),
+    qty: "3",
+    category: t.category || "Otros",
+    startMonth: String(t.expense_date || "").slice(0, 7) || monthKey(new Date()),
+  };
 }
 
 function localPlanKey(month: string) {
@@ -219,10 +260,13 @@ export default function FinanzasPersonalesIsland() {
   const [planLoading, setPlanLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const [billingCycle, setBillingCycle] = useState<PersonalBillingCycle>(DEFAULT_BILLING_CYCLE);
+  const [currentMonth, setCurrentMonth] = useState(() => currentCycleDate(DEFAULT_BILLING_CYCLE));
   const [expandedCategory, setExpandedCategory] = useState<string | null>("Supermercado");
   const [editingPlan, setEditingPlan] = useState(false);
   const [incomeInput, setIncomeInput] = useState("");
+  const [cycleStartInput, setCycleStartInput] = useState(cycleDayInputValue(DEFAULT_BILLING_CYCLE.start_day));
+  const [cycleEndInput, setCycleEndInput] = useState(cycleDayInputValue(DEFAULT_BILLING_CYCLE.end_day));
   const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>(() =>
     Object.fromEntries(CATEGORIES.map((category: string) => [category, ""]))
   );
@@ -230,7 +274,6 @@ export default function FinanzasPersonalesIsland() {
   const [reclassifyTarget, setReclassifyTarget] = useState<PersonalTransaction | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
-  const [billingStartDay, setBillingStartDay] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; kind: "expense" | "installment" } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -240,9 +283,10 @@ export default function FinanzasPersonalesIsland() {
   const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [adding, setAdding] = useState(false);
   const [installments, setInstallments] = useState<InstallmentEntry[]>([]);
-  const [showFabMenu, setShowFabMenu] = useState(false);
   // Installment form
   const [showInstModal, setShowInstModal] = useState(false);
+  const [editingInstallment, setEditingInstallment] = useState<InstallmentEntry | null>(null);
+  const [convertExpense, setConvertExpense] = useState<PersonalTransaction | null>(null);
   const [instMerchant, setInstMerchant] = useState("");
   const [instAmount, setInstAmount] = useState("");
   const [instQty, setInstQty] = useState("3");
@@ -250,21 +294,22 @@ export default function FinanzasPersonalesIsland() {
   const [instStartMonth, setInstStartMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [savingInst, setSavingInst] = useState(false);
 
-  const fetchData = useCallback(async (date: Date, bsd?: number) => {
+  const fetchData = useCallback(async (date: Date) => {
     setLoading(true);
     setError(null);
-    const activeBsd = bsd ?? billingStartDay;
-    const { from, to } = monthBounds(date, activeBsd);
+    const cycleKey = monthKey(date);
     try {
-      const res = await fetch(`/api/personal-expenses/by-category?from=${from}&to=${to}`);
+      const res = await fetch(`/api/personal-expenses/by-category?month=${cycleKey}`);
       if (!res.ok) {
         setError(`Error ${res.status}`);
         return;
       }
       const json: ByCategoryResponse = await res.json();
-      // Sync billing_start_day from server if not yet fetched
-      if (json.billing_start_day && json.billing_start_day !== activeBsd) {
-        setBillingStartDay(json.billing_start_day);
+      const nextCycle = normalizePersonalBillingCycle(json.billing_cycle, json.billing_start_day);
+      if (!sameCycle(nextCycle, billingCycle)) {
+        setBillingCycle(nextCycle);
+        setCycleStartInput(cycleDayInputValue(nextCycle.start_day));
+        setCycleEndInput(cycleDayInputValue(nextCycle.end_day));
       }
       const categories = CATEGORIES.map((category: string) =>
         json.categories.find((g) => g.category === category) || {
@@ -275,17 +320,13 @@ export default function FinanzasPersonalesIsland() {
         }
       );
       setData({ ...json, categories });
-      if (json.installments) {
-        setInstallments(json.installments);
-      } else {
-        setInstallments([]);
-      }
+      setInstallments(json.installments || []);
     } catch {
       setError("Error al cargar datos");
     } finally {
       setLoading(false);
     }
-  }, [billingStartDay]);
+  }, [billingCycle]);
 
   const fetchMonthlyPlan = useCallback(async (date: Date) => {
     const month = monthKey(date);
@@ -321,7 +362,7 @@ export default function FinanzasPersonalesIsland() {
 
   // Close modals with Escape
   useEffect(() => {
-    if (!editingPlan && !reclassifyTarget && !deleteConfirm && !showAddModal && !showInstModal && !showFabMenu) return;
+    if (!editingPlan && !reclassifyTarget && !deleteConfirm && !showAddModal && !showInstModal) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setEditingPlan(false);
@@ -329,19 +370,19 @@ export default function FinanzasPersonalesIsland() {
         setDeleteConfirm(null);
         setShowAddModal(false);
         setShowInstModal(false);
-        setShowFabMenu(false);
+        setEditingInstallment(null);
+        setConvertExpense(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editingPlan, reclassifyTarget, deleteConfirm, showAddModal, showInstModal, showFabMenu]);
+  }, [editingPlan, reclassifyTarget, deleteConfirm, showAddModal, showInstModal]);
 
   const goPrevMonth = () => {
     const prev = new Date(currentMonth);
     prev.setMonth(prev.getMonth() - 1);
     setCurrentMonth(prev);
     setExpandedCategory(null);
-    setShowFabMenu(false);
   };
 
   const goNextMonth = () => {
@@ -349,7 +390,6 @@ export default function FinanzasPersonalesIsland() {
     next.setMonth(next.getMonth() + 1);
     setCurrentMonth(next);
     setExpandedCategory(null);
-    setShowFabMenu(false);
   };
 
   const toggleCategory = (category: string) => {
@@ -359,6 +399,8 @@ export default function FinanzasPersonalesIsland() {
   const openPlanEditor = () => {
     setPlanError(null);
     setIncomeInput(plan.monthly_income > 0 ? String(plan.monthly_income) : "");
+    setCycleStartInput(cycleDayInputValue(billingCycle.start_day));
+    setCycleEndInput(cycleDayInputValue(billingCycle.end_day));
     setBudgetInputs(Object.fromEntries(CATEGORIES.map((category: string) => [
       category,
       plan.category_budgets[category] > 0 ? String(plan.category_budgets[category]) : "",
@@ -368,6 +410,15 @@ export default function FinanzasPersonalesIsland() {
 
   const handlePlanSave = async () => {
     const month = monthKey(currentMonth);
+    const startDay = parseCycleDayInput(cycleStartInput);
+    const endDay = parseCycleDayInput(cycleEndInput);
+
+    if (!startDay || !endDay) {
+      setPlanError("El período debe usar días 1-31 o último día.");
+      return;
+    }
+
+    const nextCycle = normalizePersonalBillingCycle({ start_day: startDay, end_day: endDay });
     const nextPlan: MonthlyPlan = {
       month_start: `${month}-01`,
       monthly_income: parseMoney(incomeInput),
@@ -383,32 +434,52 @@ export default function FinanzasPersonalesIsland() {
     writeLocalPlan(month, nextPlan);
 
     try {
-      const res = await fetch("/api/personal-expenses/monthly-plan", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          month,
-          monthly_income: nextPlan.monthly_income,
-          category_budgets: nextPlan.category_budgets,
+      const [planRes, cycleRes] = await Promise.all([
+        fetch("/api/personal-expenses/monthly-plan", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            month,
+            monthly_income: nextPlan.monthly_income,
+            category_budgets: nextPlan.category_budgets,
+          }),
         }),
-      });
+        fetch("/api/profile/billing-start-day", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ billing_cycle: nextCycle }),
+        }),
+      ]);
 
-      if (res.ok) {
-        const json = await res.json();
+      if (cycleRes.ok) {
+        const json = await cycleRes.json();
+        const savedCycle = normalizePersonalBillingCycle(json.billing_cycle, json.billing_start_day);
+        setBillingCycle(savedCycle);
+        setCycleStartInput(cycleDayInputValue(savedCycle.start_day));
+        setCycleEndInput(cycleDayInputValue(savedCycle.end_day));
+      } else {
+        const json = await cycleRes.json().catch(() => null);
+        setPlanError(json?.error || "No se pudo guardar el período personal.");
+        return;
+      }
+
+      if (planRes.ok) {
+        const json = await planRes.json();
         const savedPlan = normalizePlan(json, month, nextPlan);
         setPlan(savedPlan);
         writeLocalPlan(month, savedPlan);
-        setEditingPlan(false);
       } else {
         nextPlan.storage_available = false;
         setPlan(nextPlan);
-        setPlanError("Guardado en este dispositivo. Se sincronizará automáticamente.");
-        setEditingPlan(false);
+        setPlanError("Período guardado. Presupuesto guardado en este dispositivo.");
       }
+
+      setEditingPlan(false);
+      await fetchData(currentMonth);
     } catch {
       nextPlan.storage_available = false;
       setPlan(nextPlan);
-      setPlanError("Guardado en este dispositivo. Se sincronizará cuando vuelva la conexión.");
+      setPlanError("Guardado local: se sincronizará cuando vuelva la conexión.");
       setEditingPlan(false);
     } finally {
       setSavingPlan(false);
@@ -520,15 +591,70 @@ export default function FinanzasPersonalesIsland() {
     }
   };
 
+  const openAddExpense = () => {
+    setReclassifyError(null);
+    setShowAddModal(true);
+  };
+
+  const resetInstallmentForm = () => {
+    setEditingInstallment(null);
+    setConvertExpense(null);
+    setInstMerchant("");
+    setInstAmount("");
+    setInstQty("3");
+    setInstCategory("Otros");
+    setInstStartMonth(monthKey(currentMonth));
+  };
+
+  const openCreateInstallment = () => {
+    resetInstallmentForm();
+    setReclassifyError(null);
+    setShowInstModal(true);
+  };
+
+  const openEditInstallment = (inst: InstallmentEntry) => {
+    setConvertExpense(null);
+    setEditingInstallment(inst);
+    setInstMerchant(inst.merchant || "");
+    setInstAmount(String(Math.round(Number(inst.total_amount) || Number(inst.monthly_amount) * Number(inst.total_installments) || 0)));
+    setInstQty(String(inst.total_installments || 3));
+    setInstCategory(inst.category || "Otros");
+    setInstStartMonth(inst.start_month || monthKey(currentMonth));
+    setReclassifyError(null);
+    setShowInstModal(true);
+  };
+
+  const openConvertExpense = (t: PersonalTransaction) => {
+    const defaults = txToInstallmentDefaults(t);
+    setEditingInstallment(null);
+    setConvertExpense(t);
+    setInstMerchant(defaults.merchant);
+    setInstAmount(defaults.amount);
+    setInstQty(defaults.qty);
+    setInstCategory(defaults.category);
+    setInstStartMonth(defaults.startMonth);
+    setReclassifyError(null);
+    setShowInstModal(true);
+  };
+
+  const closeInstallmentModal = () => {
+    setShowInstModal(false);
+    resetInstallmentForm();
+  };
+
   const handleAddInstallment = async () => {
     if (!instMerchant.trim() || !instAmount.trim() || !instQty.trim()) return;
     setSavingInst(true);
     try {
+      const isEditing = Boolean(editingInstallment);
       const res = await fetch("/api/personal-expenses/installments", {
-        method: "POST",
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: editingInstallment?.id,
+          source_expense_id: convertExpense?.id,
           merchant: instMerchant.trim(),
+          description: instMerchant.trim(),
           total_amount: instAmount.replace(/[^0-9]/g, ""),
           total_installments: parseInt(instQty, 10),
           category: instCategory,
@@ -540,16 +666,11 @@ export default function FinanzasPersonalesIsland() {
         setReclassifyError(json?.error || `Error ${res.status}`);
         return;
       }
-      setShowInstModal(false);
-      setShowFabMenu(false);
-      setInstMerchant("");
-      setInstAmount("");
-      setInstQty("3");
-      setInstCategory("Otros");
+      closeInstallmentModal();
       setReclassifyError(null);
       await fetchData(currentMonth);
     } catch {
-      setReclassifyError("No se pudo crear la cuota");
+      setReclassifyError(editingInstallment ? "No se pudo editar la cuota" : "No se pudo crear la cuota");
     } finally {
       setSavingInst(false);
     }
@@ -564,6 +685,20 @@ export default function FinanzasPersonalesIsland() {
   const totalCategoryBudget = Object.values(plan.category_budgets).reduce((sum, value) => sum + Number(value || 0), 0);
   const budgetSpentPct = totalCategoryBudget > 0 ? (monthTotal / totalCategoryBudget) * 100 : 0;
   const remainingIncome = income > 0 ? income - monthTotal : 0;
+  const activeCycleKey = data?.cycle_key || monthKey(currentMonth);
+  const activePeriodLabel = data?.from && data?.to
+    ? formatPersonalCycleLabel(data.from, data.to)
+    : formatPersonalCycleLabel(
+      getPersonalCycleBounds(activeCycleKey, billingCycle).from,
+      getPersonalCycleBounds(activeCycleKey, billingCycle).to
+    );
+  const draftStartDay = parseCycleDayInput(cycleStartInput) || billingCycle.start_day;
+  const draftEndDay = parseCycleDayInput(cycleEndInput) || billingCycle.end_day;
+  const draftCycle = normalizePersonalBillingCycle({ start_day: draftStartDay, end_day: draftEndDay });
+  const draftBounds = getPersonalCycleBounds(activeCycleKey, draftCycle);
+  const instTotal = parseMoney(instAmount || "");
+  const instQtyNum = Math.round(Number(instQty) || 0);
+  const instAmounts = installmentPreview(instTotal, instQtyNum);
 
   return (
     <div class="fh-root fp-root">
@@ -584,23 +719,19 @@ export default function FinanzasPersonalesIsland() {
             }}
             aria-label="Seleccionar mes directamente"
           >
-            {billingStartDay > 1
-              ? monthName(getCycleEndRef(currentMonth, billingStartDay))
-              : monthName(currentMonth)}
-            {billingStartDay > 1 && (
-              <span class="fp-cycle-badge">CICLO {billingStartDay}-{billingStartDay - 1}</span>
-            )}
+            {monthName(cycleDateFromKey(activeCycleKey))}
+            <span class="fp-cycle-badge">{activePeriodLabel}</span>
+            <span class="fp-cycle-subtle">{cycleConfigLabel(billingCycle)}</span>
           </button>
           <input
             id="fp-month-picker"
             type="month"
             class="fp-month-input-hidden"
-            value={monthKey(currentMonth)}
+            value={activeCycleKey}
             onInput={(e) => {
               const val = (e.currentTarget as HTMLInputElement).value;
               if (/^\d{4}-\d{2}$/.test(val)) {
-                const [y, m] = val.split("-").map(Number);
-                setCurrentMonth(new Date(y, m - 1, 15));
+                setCurrentMonth(cycleDateFromKey(val));
               }
             }}
             aria-hidden="true"
@@ -635,7 +766,7 @@ export default function FinanzasPersonalesIsland() {
         <div class="fh-budget-hero fp-hero">
           <div class="fh-budget-numbers">
             <div class="fh-hero-num">
-              <span class="fh-label">GASTADO EN EL MES</span>
+              <span class="fh-label">GASTADO EN PERÍODO</span>
               <span class="fh-hero-value">{data ? formatCLP(monthTotal) : "—"}</span>
             </div>
             {income > 0 && (
@@ -696,14 +827,24 @@ export default function FinanzasPersonalesIsland() {
           <section class="fp-category-section">
             <div class="fp-section-head">
               <span class="fh-label">CATEGORÍAS</span>
-              <button class="fp-inline-action fp-inline-action-small" onClick={openPlanEditor}>
-                <TctIcon name="edit" size={13} variant="dots" />
-                PRESUPUESTOS
-              </button>
+              <div class="fp-section-actions">
+                <button class="fp-inline-action fp-inline-action-small" onClick={openPlanEditor}>
+                  <TctIcon name="edit" size={13} variant="dots" />
+                  PRESUPUESTOS
+                </button>
+                <button class="fp-inline-action fp-inline-action-small" onClick={openAddExpense}>
+                  <TctIcon name="dollarSign" size={13} variant="dots" />
+                  GASTO
+                </button>
+                <button class="fp-inline-action fp-inline-action-small" onClick={openCreateInstallment}>
+                  <TctIcon name="repeat" size={13} variant="dots" />
+                  CUOTA
+                </button>
+              </div>
             </div>
 
             {!hasExpenses ? (
-              <div class="fh-empty fp-state fp-state-large">[NO HAY GASTOS PERSONALES EN ESTE MES]</div>
+              <div class="fh-empty fp-state fp-state-large">[NO HAY GASTOS PERSONALES EN ESTE PERÍODO]</div>
             ) : (
               <div class="fp-merchant-list fp-category-list">
                 {categories.map((group) => {
@@ -712,6 +853,7 @@ export default function FinanzasPersonalesIsland() {
                   const categoryBudgetPct = budget > 0 ? (group.total / budget) * 100 : 0;
                   const spendShare = monthTotal > 0 ? Math.round((group.total / monthTotal) * 100) : 0;
                   const tone = budget > 0 ? budgetTone(categoryBudgetPct) : "neutral";
+                  const categoryInstallments = installments.filter((inst) => inst.category === group.category);
 
                   return (
                     <div class="fp-merchant-group fp-category-card" key={group.category}>
@@ -726,7 +868,7 @@ export default function FinanzasPersonalesIsland() {
                             {group.category}
                           </span>
                           <span class="fp-merchant-meta">
-                            {group.count} {group.count === 1 ? "GASTO" : "GASTOS"} · {spendShare}% DEL GASTO MENSUAL
+                            {group.count} {group.count === 1 ? "GASTO" : "GASTOS"} · {spendShare}% DEL PERÍODO
                           </span>
                         </div>
                         <div class="fp-merchant-right">
@@ -751,7 +893,7 @@ export default function FinanzasPersonalesIsland() {
 
                       {isExpanded && (
                         <div class="fp-transactions">
-                          {group.transactions.length === 0 ? (
+                          {group.transactions.length === 0 && categoryInstallments.length === 0 ? (
                             <div class="fp-transaction fp-transaction-empty">
                               <div class="fp-tx-left">
                                 <span class="fp-tx-date">SIN MOVIMIENTOS</span>
@@ -768,11 +910,17 @@ export default function FinanzasPersonalesIsland() {
                                     {t.display_time ? ` · ${t.display_time}` : ""}
                                   </span>
                                   <span class="fp-tx-desc">{transactionTitle(t)}</span>
-                                  <button class="fp-tx-category-btn" onClick={() => { setReclassifyTarget(t); setReclassifyError(null); }}>
-                                    <TctIcon name={CATEGORY_ICONS[t.category] || "tag"} size={13} variant="dots" />
-                                    {t.category}
-                                    <TctIcon name="chevronDown" size={12} variant="dots" />
-                                  </button>
+                                  <div class="fp-tx-actions">
+                                    <button class="fp-tx-category-btn" onClick={() => { setReclassifyTarget(t); setReclassifyError(null); }}>
+                                      <TctIcon name={CATEGORY_ICONS[t.category] || "tag"} size={13} variant="dots" />
+                                      {t.category}
+                                      <TctIcon name="chevronDown" size={12} variant="dots" />
+                                    </button>
+                                    <button class="fp-tx-category-btn fp-tx-installment-action" onClick={() => openConvertExpense(t)}>
+                                      <TctIcon name="repeat" size={13} variant="dots" />
+                                      CUOTAS
+                                    </button>
+                                  </div>
                                 </div>
                                 <div class="fp-tx-right">
                                   <button
@@ -788,8 +936,7 @@ export default function FinanzasPersonalesIsland() {
                               </div>
                             ))}
                             {/* Show installments for this category */}
-                            {installments
-                              .filter((inst) => inst.category === group.category)
+                            {categoryInstallments
                               .map((inst) => (
                                 <div class="fp-transaction fp-transaction-installment" key={`inst-${inst.id}`}>
                                   <div class="fp-tx-left">
@@ -797,9 +944,19 @@ export default function FinanzasPersonalesIsland() {
                                       CUOTA {inst.current_installment}/{inst.total_installments}
                                     </span>
                                     <span class="fp-tx-desc">{inst.merchant}</span>
-                                    <span class="fp-tx-installment-label">CUOTA</span>
+                                    <span class="fp-tx-installment-label">
+                                      TOTAL {formatCLP(inst.total_amount)} · {inst.start_month}
+                                    </span>
                                   </div>
                                   <div class="fp-tx-right">
+                                    <button
+                                      class="fp-tx-delete-btn"
+                                      onClick={(e) => { e.stopPropagation(); openEditInstallment(inst); }}
+                                      aria-label="Editar cuota"
+                                      title="Editar cuota"
+                                    >
+                                      <TctIcon name="edit" size={13} variant="dots" />
+                                    </button>
                                     <button
                                       class="fp-tx-delete-btn"
                                       onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: inst.id, kind: "installment" }); setReclassifyError(null); }}
@@ -831,8 +988,8 @@ export default function FinanzasPersonalesIsland() {
           <div class="fp-modal-sheet">
             <div class="fp-modal-head">
               <div>
-                <span class="fh-label">PRESUPUESTOS</span>
-                <h2>Presupuestos — {monthName(currentMonth)}</h2>
+                <span class="fh-label">SUELDO · PRESUPUESTOS · PERÍODO</span>
+                <h2>{monthName(cycleDateFromKey(activeCycleKey))}</h2>
               </div>
               <button class="fp-icon-btn" onClick={() => setEditingPlan(false)} aria-label="Cerrar">
                 <TctIcon name="x" size={18} variant="dots" />
@@ -849,6 +1006,40 @@ export default function FinanzasPersonalesIsland() {
                 onInput={(e) => setIncomeInput((e.currentTarget as HTMLInputElement).value)}
               />
             </label>
+
+            <div class="fp-cycle-editor">
+              <div class="fp-cycle-editor-head">
+                <span class="fh-label">PERÍODO PERSONAL</span>
+                <span>[PERÍODO: {formatPersonalCycleLabel(draftBounds.from, draftBounds.to)}]</span>
+              </div>
+              <div class="fp-cycle-presets" aria-label="Atajos de período">
+                <button type="button" class="fp-chip-btn" onClick={() => { setCycleStartInput("1"); setCycleEndInput("last"); }}>
+                  1 → ÚLTIMO
+                </button>
+                <button type="button" class="fp-chip-btn" onClick={() => { setCycleStartInput("20"); setCycleEndInput("19"); }}>
+                  20 → 19
+                </button>
+                <button type="button" class="fp-chip-btn" onClick={() => { setCycleStartInput("21"); setCycleEndInput("20"); }}>
+                  21 → 20
+                </button>
+              </div>
+              <div class="fp-cycle-fields">
+                <label class="fp-money-field">
+                  <span>Inicio</span>
+                  <select value={cycleStartInput} onChange={(e) => setCycleStartInput((e.currentTarget as HTMLSelectElement).value)}>
+                    {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((day) => <option value={day} key={day}>Día {day}</option>)}
+                    <option value="last">Último día</option>
+                  </select>
+                </label>
+                <label class="fp-money-field">
+                  <span>Cierre</span>
+                  <select value={cycleEndInput} onChange={(e) => setCycleEndInput((e.currentTarget as HTMLSelectElement).value)}>
+                    {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((day) => <option value={day} key={day}>Día {day}</option>)}
+                    <option value="last">Último día</option>
+                  </select>
+                </label>
+              </div>
+            </div>
 
             <div class="fp-budget-editor-list">
               {CATEGORIES.map((category: string) => (
@@ -960,36 +1151,6 @@ export default function FinanzasPersonalesIsland() {
         </div>
       )}
 
-      {/* Floating add button + menu */}
-      <div class="fp-fab-wrap">
-        {showFabMenu && (
-          <div class="fp-fab-menu">
-            <button
-              class="fp-fab-menu-item"
-              onClick={() => { setShowAddModal(true); setShowFabMenu(false); setReclassifyError(null); }}
-            >
-              <TctIcon name="dollarSign" size={14} variant="dots" />
-              GASTO
-            </button>
-            <button
-              class="fp-fab-menu-item"
-              onClick={() => { setShowInstModal(true); setShowFabMenu(false); setReclassifyError(null); }}
-            >
-              <TctIcon name="repeat" size={14} variant="dots" />
-              CUOTA
-            </button>
-          </div>
-        )}
-        <button
-          class="fp-fab"
-          onClick={() => setShowFabMenu((v) => !v)}
-          aria-label="Agregar"
-          title="Agregar"
-        >
-          <TctIcon name="plus" size={20} variant="dots" />
-        </button>
-      </div>
-
       {/* Add expense modal */}
       {showAddModal && (
         <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Agregar gasto">
@@ -1072,20 +1233,26 @@ export default function FinanzasPersonalesIsland() {
         </div>
       )}
 
-      {/* Add installment modal */}
+      {/* Installment modal */}
       {showInstModal && (
-        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Agregar cuota">
-          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => setShowInstModal(false)} />
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Cuota personal">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={closeInstallmentModal} />
           <div class="fp-modal-sheet fp-modal-sheet-compact">
             <div class="fp-modal-head">
               <div>
-                <span class="fh-label">AGREGAR CUOTA</span>
-                <h2>Nuevo plan de cuotas</h2>
+                <span class="fh-label">{editingInstallment ? "EDITAR CUOTA" : convertExpense ? "CONVERTIR A CUOTAS" : "AGREGAR CUOTA"}</span>
+                <h2>{editingInstallment ? "Editar plan de cuotas" : convertExpense ? "Reemplazar gasto por cuotas" : "Nuevo plan de cuotas"}</h2>
               </div>
-              <button class="fp-icon-btn" onClick={() => setShowInstModal(false)} aria-label="Cerrar">
+              <button class="fp-icon-btn" onClick={closeInstallmentModal} aria-label="Cerrar">
                 <TctIcon name="x" size={18} variant="dots" />
               </button>
             </div>
+
+            {convertExpense && (
+              <div class="fp-modal-warning" role="status">
+                Este gasto ({formatCLP(convertExpense.amount)}) será reemplazado por el plan de cuotas para evitar doble conteo.
+              </div>
+            )}
 
             <label class="fp-money-field">
               <span>Comercio</span>
@@ -1133,9 +1300,10 @@ export default function FinanzasPersonalesIsland() {
               />
             </label>
 
-            {instAmount && instQty && parseInt(instQty) > 0 && (
+            {instAmounts && (
               <div class="fp-modal-total" style="margin-bottom:var(--space-sm)">
-                ≈ {formatCLP(Math.floor(parseInt(instAmount.replace(/[^0-9]/g, "") || "0") / parseInt(instQty)))} por cuota
+                {formatCLP(instAmounts.base)} por cuota
+                {instAmounts.last !== instAmounts.base ? ` · última ${formatCLP(instAmounts.last)}` : ""}
               </div>
             )}
 
@@ -1159,7 +1327,7 @@ export default function FinanzasPersonalesIsland() {
             {reclassifyError && <div class="fp-modal-error" role="alert">{reclassifyError}</div>}
 
             <div class="fp-modal-actions">
-              <button class="fp-secondary-btn" onClick={() => setShowInstModal(false)} disabled={savingInst}>
+              <button class="fp-secondary-btn" onClick={closeInstallmentModal} disabled={savingInst}>
                 Cancelar
               </button>
               <button
@@ -1167,7 +1335,13 @@ export default function FinanzasPersonalesIsland() {
                 onClick={handleAddInstallment}
                 disabled={savingInst || !instMerchant.trim() || !instAmount.trim() || !instQty.trim()}
               >
-                {savingInst ? "Guardando..." : "Crear cuota"}
+                {savingInst
+                  ? "Guardando..."
+                  : editingInstallment
+                    ? "Guardar cambios"
+                    : convertExpense
+                      ? "Convertir a cuotas"
+                      : "Crear cuota"}
               </button>
             </div>
           </div>
