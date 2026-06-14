@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = [
   "/api/auth/callback",
   "/api/auth/signout",
   "/api/push/notify",
+  "/api/push/personal-expense",
 ];
 
 // Routes that need the user role (admin guard or read-only UI)

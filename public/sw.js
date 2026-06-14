@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'tct-v4';
+const CACHE_NAME = 'tct-v5';
 const serviceWorker = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 const STATIC_ASSETS = [
   '/icons/icon-192.png',
@@ -63,7 +63,13 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
-  const data = event.data.json();
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch {
+    data = { title: 'TCT', body: event.data.text() };
+  }
+
   const options = {
     body: data.body || '',
     icon: data.icon || '/icons/icon-192.png',

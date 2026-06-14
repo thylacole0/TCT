@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
-import { createServiceClient } from "../../../lib/supabase";
+import { createAuthClient } from "../../../lib/supabase";
+import { getFreshUserMetadata } from "../../../lib/userMetadata";
 import {
   normalizePersonalBillingCycle,
   type BillingCycleDay,
@@ -65,13 +66,13 @@ export const GET: APIRoute = async ({ locals }) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const meta = user.user_metadata as Record<string, unknown> | undefined;
-  const cycle = normalizePersonalBillingCycle(meta?.personal_billing_cycle, meta?.billing_start_day);
+  const meta = await getFreshUserMetadata(locals.accessToken, user);
+  const cycle = normalizePersonalBillingCycle(meta.personal_billing_cycle, meta.billing_start_day);
 
   return json(cycleResponse(cycle));
 };
 
-export const PATCH: APIRoute = async ({ request, locals }) => {
+export const PATCH: APIRoute = async ({ request, cookies, locals }) => {
   const user = locals.user;
   if (!user || !locals.accessToken) {
     return json({ error: "Unauthorized" }, 401);
@@ -90,19 +91,51 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   }
 
   try {
-    const adminClient = createServiceClient();
+    const refreshToken = cookies.get("sb-refresh-token")?.value;
+    if (!refreshToken) {
+      return json({ error: "Sesión incompleta. Vuelve a iniciar sesión." }, 401);
+    }
+
+    const client = createAuthClient(locals.accessToken);
+    const { error: sessionError } = await client.auth.setSession({
+      access_token: locals.accessToken,
+      refresh_token: refreshToken,
+    });
+    if (sessionError) {
+      return json({ error: sessionError.message }, 401);
+    }
+
+    const currentMeta = await getFreshUserMetadata(locals.accessToken, user);
     const nextMetadata = {
-      ...(user.user_metadata as Record<string, unknown>),
+      ...currentMeta,
       personal_billing_cycle: cycle,
       billing_start_day: legacyStartDay(cycle),
     };
 
-    const { error } = await adminClient.auth.admin.updateUserById(user.id, {
-      user_metadata: nextMetadata,
+    const { data, error } = await client.auth.updateUser({
+      data: nextMetadata,
     });
 
     if (error) {
       return json({ error: error.message }, 500);
+    }
+
+    const session = data.user ? (await client.auth.getSession()).data.session : null;
+    if (session?.access_token && session?.refresh_token) {
+      cookies.set("sb-access-token", session.access_token, {
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+      cookies.set("sb-refresh-token", session.refresh_token, {
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 30,
+      });
     }
 
     return json({ ok: true, ...cycleResponse(cycle) });

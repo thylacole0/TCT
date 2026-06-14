@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import TctIcon from '../components/icons/TctIcon';
 import { createAuthClient } from '../lib/supabase';
+import { getFreshUserMetadata } from '../lib/userMetadata';
 import {
   cycleKeyFromDate,
   formatDateCL,
@@ -21,9 +22,10 @@ const supabase = createAuthClient(accessToken);
 
 // Current month boundaries (Chile timezone)
 const now = nowChile();
+const userMeta = await getFreshUserMetadata(accessToken, user);
 const personalBillingCycle = normalizePersonalBillingCycle(
-  (user.user_metadata as Record<string, unknown> | undefined)?.personal_billing_cycle,
-  (user.user_metadata as Record<string, unknown> | undefined)?.billing_start_day
+  userMeta.personal_billing_cycle,
+  userMeta.billing_start_day
 );
 const personalCycleKey = cycleKeyFromDate(now, personalBillingCycle);
 const personalCycleBounds = getPersonalCycleBounds(personalCycleKey, personalBillingCycle);

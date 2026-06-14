@@ -60,7 +60,7 @@ const {
   <body>
     <!-- Push notification opt-in banner -->
     <div id="push-banner" class="push-banner" aria-hidden="true">
-      <span class="push-banner-text">¿Activar recordatorios de peso y comidas?</span>
+      <span class="push-banner-text">¿Activar notificaciones de TCT?</span>
       <div class="push-banner-actions">
         <button id="push-accept" class="push-btn push-btn-accept">ACTIVAR</button>
         <button id="push-dismiss" class="push-btn push-btn-dismiss">NO</button>
@@ -342,15 +342,18 @@ const {
     localStorage.setItem('tct-push-dismissed', '1');
   });
 
-  async function ensurePushSubscription(reg: ServiceWorkerRegistration) {
+  async function ensurePushSubscription(reg: ServiceWorkerRegistration): Promise<{ ok: boolean; status: string; error?: string }> {
     try {
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
-        // Get VAPID key from server
         const res = await fetch('/api/push/vapid-key');
-        if (!res.ok) return false;
+        if (!res.ok) {
+          const message = await res.text().catch(() => 'VAPID key not configured');
+          return { ok: false, status: 'vapid_error', error: message };
+        }
         const { publicKey } = await res.json();
+        if (!publicKey) return { ok: false, status: 'vapid_error', error: 'VAPID public key vacío' };
 
         const applicationServerKey = urlBase64ToUint8Array(publicKey);
         sub = await reg.pushManager.subscribe({
@@ -359,16 +362,20 @@ const {
         });
       }
 
-      // Send subscription to our API
       const saveRes = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: sub.toJSON() }),
       });
-      return saveRes.ok;
+      if (!saveRes.ok) {
+        const message = await saveRes.text().catch(() => 'subscription_save_failed');
+        return { ok: false, status: 'save_failed', error: message };
+      }
+      return { ok: true, status: 'enabled' };
     } catch (err) {
       console.warn('Push subscription failed:', err);
-      return false;
+      const message = err instanceof Error ? err.message : 'push_subscription_failed';
+      return { ok: false, status: 'failed', error: message };
     }
   }
 
@@ -384,8 +391,7 @@ const {
     }
     localStorage.removeItem('tct-push-dismissed');
     const reg = await navigator.serviceWorker.ready;
-    const ok = await ensurePushSubscription(reg);
-    return { ok, status: ok ? 'enabled' : 'failed' };
+    return ensurePushSubscription(reg);
   };
 
   function urlBase64ToUint8Array(base64String: string) {

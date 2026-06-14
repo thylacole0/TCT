@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
+import { getFreshUserMetadata } from "../../../lib/userMetadata";
 import {
   cycleKeyFromDate,
   getPersonalCycleBounds,
@@ -92,8 +93,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
 
-  const userMeta = user.user_metadata as Record<string, unknown> | undefined;
-  const billingCycle = normalizePersonalBillingCycle(userMeta?.personal_billing_cycle, userMeta?.billing_start_day);
+  const userMeta = await getFreshUserMetadata(locals.accessToken, user);
+  const billingCycle = normalizePersonalBillingCycle(userMeta.personal_billing_cycle, userMeta.billing_start_day);
 
   let resolvedCycleKey = monthParam && MONTH_RE.test(monthParam)
     ? monthParam

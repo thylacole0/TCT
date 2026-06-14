@@ -1,8 +1,10 @@
 import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
 import { CATEGORIES } from "../../../lib/personalExpenses.js";
+import { sendPersonalExpensePushForAuthenticatedUser } from "../../../lib/push";
 
 const ALLOWED_CATEGORIES = CATEGORIES as readonly string[];
+const ALLOWED_SOURCES = ["banco_falabella", "google_pay", "telegram", "manual", "unknown"] as const;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -23,7 +25,7 @@ function toMoney(value: unknown): number {
 
 /**
  * POST /api/personal-expenses/add
- * Body: { merchant, amount, category, expense_date?, expense_time?, description?, card_last4? }
+ * Body: { merchant, amount, category, expense_date?, expense_time?, description?, card_last4?, source? }
  */
 export const POST: APIRoute = async ({ request, locals }) => {
   const user = locals.user;
@@ -39,6 +41,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     expense_time?: string;
     description?: string;
     card_last4?: string;
+    source?: string;
   };
   try {
     body = await request.json();
@@ -67,11 +70,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   const description = (body.description || merchant).trim().slice(0, 240);
   const cardLast4 = (body.card_last4 || "").trim().slice(0, 4);
-  const source = "manual";
+  const requestedSource = (body.source || "manual").trim();
+  const source = (ALLOWED_SOURCES as readonly string[]).includes(requestedSource) ? requestedSource : "unknown";
 
   const supabase = createAuthClient(locals.accessToken);
 
-  const fingerprint = `manual-${user.id}-${expenseDate}-${amount}-${merchant.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+  const fingerprint = `${source}-${user.id}-${expenseDate}-${amount}-${merchant.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 
   const { data, error } = await supabase
     .from("personal_expenses")
@@ -87,12 +91,24 @@ export const POST: APIRoute = async ({ request, locals }) => {
       card_last4: cardLast4 || null,
       fingerprint,
     })
-    .select("id, merchant, amount, category, expense_date, expense_time, created_at")
+    .select("id, user_id, merchant, description, amount, category, expense_date, expense_time, source, created_at")
     .single();
 
   if (error) {
     return json({ error: error.message }, 500);
   }
 
-  return json({ ok: true, message: "Gasto agregado", expense: data }, 201);
+  const push = await sendPersonalExpensePushForAuthenticatedUser(supabase, {
+    id: data.id,
+    user_id: data.user_id,
+    amount: Number(data.amount || 0),
+    merchant: data.merchant,
+    description: data.description,
+    category: data.category,
+    source: data.source,
+    expense_date: data.expense_date,
+    expense_time: data.expense_time,
+  });
+
+  return json({ ok: true, message: "Gasto agregado", expense: data, push }, 201);
 };
