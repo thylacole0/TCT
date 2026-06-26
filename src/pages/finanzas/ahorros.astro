@@ -1,0 +1,34 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SavingsIsland from '../../components/islands/SavingsIsland';
+import TctIcon from '../../components/icons/TctIcon';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+---
+<Layout title="TCT — Ahorros" currentPath="/finanzas/ahorros">
+  <div class="fp-page-header">
+    <a href="/finanzas/personales" class="back-link"><TctIcon name="arrowLeft" size={14} variant="dots" /> PERSONAL</a>
+  </div>
+  <SavingsIsland client:load />
+</Layout>
+
+<style>
+  .fp-page-header {
+    margin-bottom: var(--space-lg);
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-family: var(--font-mono);
+    font-size: var(--label);
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-micro) var(--ease-out);
+  }
+  .back-link:hover {
+    color: var(--text-display);
+  }
+</style>

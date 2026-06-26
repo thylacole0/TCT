@@ -4,6 +4,8 @@ import type { ComponentChildren } from "preact";
 export type IconName =
   | "home"
   | "scale"
+  | "piggy-bank"
+  | "target"
   | "wallet"
   | "userWallet"
   | "utensils"
@@ -234,6 +236,19 @@ const paths: Record<string, ComponentChildren> = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  "piggy-bank": (
+    <>
+      <path d="M19 7h-2.2c-.4-.6-1-1.1-1.8-1.3V4.5c0-.8-.7-1.5-1.5-1.5h-3c-.8 0-1.5.7-1.5 1.5v1.2C8 6 7 7.2 7 8.5V11H5c-.6 0-1 .4-1 1v2c0 .6.4 1 1 1h1v2h2v.5A2.5 2.5 0 0 0 10.5 20h3a2.5 2.5 0 0 0 2.5-2.5V17h1.5c.8 0 1.5-.7 1.5-1.5v-7c0-.8-.7-1.5-1.5-1.5Z" />
+      <path d="M14 11.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z" />
+    </>
+  ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </>
+  ),
 };
 
 export default function TctIcon({ name, size = 18, class: className, title, variant = "line" }: TctIconProps) {
