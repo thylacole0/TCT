@@ -10,8 +10,8 @@ import {
   type PersonalBillingCycle,
 } from "../../lib/dates";
 import TctIcon from "../icons/TctIcon";
-import CategorySummaryEnhanced from "../expenses/CategorySummaryEnhanced";
 import MerchantLogo from "../expenses/MerchantLogo";
+import SavingsIsland from "./SavingsIsland";
 
 interface PersonalTransaction {
   id: string;
@@ -275,6 +275,7 @@ export default function FinanzasPersonalesIsland() {
   const [savingPlan, setSavingPlan] = useState(false);
   const [reclassifyTarget, setReclassifyTarget] = useState<PersonalTransaction | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [activeTab, setActiveTab] = useState<"gastos" | "ahorros">("gastos");
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; kind: "expense" | "installment" } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -704,6 +705,28 @@ export default function FinanzasPersonalesIsland() {
 
   return (
     <div class="fh-root fp-root">
+      {/* Tab bar */}
+      <div class="fh-tabs fp-tabs">
+        <button
+          class={`fh-tab ${activeTab === "gastos" ? "fh-tab-active" : ""}`}
+          aria-pressed={activeTab === "gastos"}
+          onClick={() => setActiveTab("gastos")}
+        >
+          GASTOS
+        </button>
+        <button
+          class={`fh-tab ${activeTab === "ahorros" ? "fh-tab-active" : ""}`}
+          aria-pressed={activeTab === "ahorros"}
+          onClick={() => setActiveTab("ahorros")}
+        >
+          AHORROS
+        </button>
+      </div>
+
+      {activeTab === "ahorros" ? (
+        <SavingsIsland />
+      ) : (
+      <>
       <div class="fp-top-stack">
         <div class="fp-title-row">
           <span class="fh-label">FINANZAS PERSONALES</span>
@@ -810,22 +833,26 @@ export default function FinanzasPersonalesIsland() {
         <>
           <section class="fh-section fp-summary-section">
             <span class="fh-label">RESUMEN POR CATEGORÍA</span>
-            <CategorySummaryEnhanced
-              categories={categories}
-              totalSpent={monthTotal}
-              categoryBudgets={plan.category_budgets}
-              onOpenBudgets={openPlanEditor}
-            />
+            {hasExpenses ? (
+              <div class="fh-pie-wrap fp-summary-list">
+                {categories.filter((g) => g.total > 0).map((group) => (
+                  <div class="fh-pie-legend-item" key={group.category}>
+                    <span class="fh-pie-dot" style={{ background: categoryColor(group.category) }} />
+                    <span class="fh-pie-legend-label">{group.category}</span>
+                    <span class="fh-pie-legend-pct">{monthTotal > 0 ? Math.round((group.total / monthTotal) * 100) : 0}%</span>
+                    <span class="fh-pie-legend-val">{formatCLP(group.total)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div class="fh-empty fp-state">[SIN GASTOS]</div>
+            )}
           </section>
 
           <section class="fp-category-section">
             <div class="fp-section-head">
               <span class="fh-label">CATEGORÍAS</span>
               <div class="fp-section-actions">
-                <a href="/finanzas/ahorros" class="fp-inline-action fp-inline-action-small" style="text-decoration:none">
-                  <TctIcon name="piggy-bank" size={13} variant="dots" />
-                  AHORROS
-                </a>
                 <button class="fp-inline-action fp-inline-action-small" onClick={openPlanEditor}>
                   <TctIcon name="edit" size={13} variant="dots" />
                   PRESUPUESTOS
@@ -1347,6 +1374,8 @@ export default function FinanzasPersonalesIsland() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

@@ -4155,3 +4155,45 @@ input[type="date"].fp-add-input {
 .cs-mini-fill.cs-over { background: #EF4444 !important; }
 .cs-mini-pct { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
 .cs-over-text { color: #EF4444; font-weight: 600; }
+
+/* ── Personal tabs (fp-tabs) ── */
+.fp-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding-top: var(--space-sm);
+}
+
+/* ── Savings mobile compact ── */
+@media (max-width: 640px) {
+  .savings-overview {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+  .savings-overview-card {
+    padding: var(--space-sm);
+    gap: var(--space-sm);
+  }
+  .savings-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+  }
+  .savings-card {
+    padding: var(--space-sm);
+  }
+  .savings-card-amounts {
+    grid-template-columns: 1fr 1fr;
+  }
+  .savings-form {
+    max-width: 100%;
+    margin: var(--space-sm);
+    border-radius: var(--radius-lg);
+  }
+  .savings-field-row {
+    grid-template-columns: 1fr;
+  }
+  .savings-value-lg {
+    font-size: var(--h5);
+  }
+}
