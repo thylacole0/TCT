@@ -1,0 +1,11 @@
+---
+import Layout from '../layouts/Layout.astro';
+import SavingsIsland from '../components/islands/SavingsIsland';
+
+const { user, accessToken } = Astro.locals;
+if (!user || !accessToken) return Astro.redirect('/signin');
+---
+
+<Layout title="TCT — Ahorros" currentPath="/ahorros">
+  <SavingsIsland client:load />
+</Layout>
