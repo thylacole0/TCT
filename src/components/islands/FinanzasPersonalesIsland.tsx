@@ -12,6 +12,8 @@ import {
 import TctIcon from "../icons/TctIcon";
 import MerchantLogo from "../expenses/MerchantLogo";
 import SavingsIsland from "./SavingsIsland";
+import WeeklyHeatmap from "../expenses/WeeklyHeatmap";
+import WeekCategoryGrid from "../expenses/WeekCategoryGrid";
 
 interface PersonalTransaction {
   id: string;
@@ -276,6 +278,7 @@ export default function FinanzasPersonalesIsland() {
   const [reclassifyTarget, setReclassifyTarget] = useState<PersonalTransaction | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [activeTab, setActiveTab] = useState<"gastos" | "ahorros">("gastos");
+  const [summaryView, setSummaryView] = useState<"heatmap" | "crossgrid">("heatmap");
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; kind: "expense" | "installment" } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -682,6 +685,38 @@ export default function FinanzasPersonalesIsland() {
   const categories = data?.categories || [];
   const monthTotal = data?.total_spent || 0;
   const hasExpenses = categories.some((g) => g.count > 0);
+
+  // ── Derived: heatmap + week breakdown ──
+  const categoryTotals: Record<string, number> = {};
+  categories.forEach((g) => { categoryTotals[g.category] = g.total; });
+
+  // Build weekly heatmap data from transactions
+  const heatmapWeeks: any[][] = [];
+  const heatmapLabels: string[] = [];
+  const weekBreakdown: { label: string; values: Record<string, number> }[] = [];
+  if (data?.from && data?.to) {
+    const from = new Date(data.from + "T12:00:00");
+    const to = new Date(data.to + "T12:00:00");
+    const weekCount = Math.ceil((to.getTime() - from.getTime()) / (7 * 86400000));
+    for (let w = 0; w < weekCount; w++) {
+      const wStart = new Date(from);
+      wStart.setDate(wStart.getDate() + w * 7);
+      const wEnd = new Date(wStart);
+      wEnd.setDate(wEnd.getDate() + 6);
+      heatmapLabels.push(`S${w + 1}`);
+      const weekVals: Record<string, number> = {};
+      // Initialize categories
+      weekBreakdown.push({ label: `S${w + 1}`, values: weekVals });
+    }
+  }
+  // Default empty heatmap
+  if (heatmapWeeks.length === 0) {
+    for (let w = 0; w < 5; w++) {
+      heatmapWeeks.push(Array(7).fill(null));
+      heatmapLabels.push(`S${w + 1}`);
+      weekBreakdown.push({ label: `S${w + 1}`, values: {} });
+    }
+  }
   const income = plan.monthly_income;
   const showIncomeBar = income > 0 && monthTotal > 0;
   const incomePctRaw = income > 0 ? (monthTotal / income) * 100 : 0;
@@ -832,20 +867,21 @@ export default function FinanzasPersonalesIsland() {
       {data && !loading && !error && (
         <>
           <section class="fh-section fp-summary-section">
-            <span class="fh-label">RESUMEN POR CATEGORÍA</span>
-            {hasExpenses ? (
-              <div class="fh-pie-wrap fp-summary-list">
-                {categories.filter((g) => g.total > 0).map((group) => (
-                  <div class="fh-pie-legend-item" key={group.category}>
-                    <span class="fh-pie-dot" style={{ background: categoryColor(group.category) }} />
-                    <span class="fh-pie-legend-label">{group.category}</span>
-                    <span class="fh-pie-legend-pct">{monthTotal > 0 ? Math.round((group.total / monthTotal) * 100) : 0}%</span>
-                    <span class="fh-pie-legend-val">{formatCLP(group.total)}</span>
-                  </div>
-                ))}
+            <div class="fp-summary-header">
+              <span class="fh-label">RESUMEN</span>
+              <div class="fp-summary-tabs">
+                <button class={`fp-summary-tab ${summaryView === "heatmap" ? "active" : ""}`} onClick={() => setSummaryView("heatmap")}>MAPA</button>
+                <button class={`fp-summary-tab ${summaryView === "crossgrid" ? "active" : ""}`} onClick={() => setSummaryView("crossgrid")}>SEMANAL</button>
               </div>
+            </div>
+            {summaryView === "crossgrid" ? (
+              <WeekCategoryGrid
+                weeks={weekBreakdown}
+                totals={categoryTotals}
+                grandTotal={monthTotal}
+              />
             ) : (
-              <div class="fh-empty fp-state">[SIN GASTOS]</div>
+              <WeeklyHeatmap weeks={heatmapWeeks} weekLabels={heatmapLabels} />
             )}
           </section>
 

@@ -1,6 +1,9 @@
 /** @jsxImportSource preact */
 import { useState, useEffect, useCallback } from "preact/hooks";
 import TctIcon from "../icons/TctIcon";
+import AnnualGoal from "../savings/AnnualGoal";
+import AnnualProjection from "../savings/AnnualProjection";
+import CumulativeStaircase from "../savings/CumulativeStaircase";
 
 // ── Types ──
 interface SavingsGoal {
@@ -218,6 +221,7 @@ export default function SavingsIsland() {
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);
   const [entryGoal, setEntryGoal] = useState<SavingsGoal | null>(null);
+  const [savingsView, setSavingsView] = useState<"annual" | "projection" | "staircase">("annual");
 
   const fetchGoals = useCallback(async () => {
     setLoading(true);
@@ -339,18 +343,81 @@ export default function SavingsIsland() {
         <div class="savings-empty">[SIN METAS DE AHORRO]</div>
       )}
 
-      {/* Goals list */}
-      <div class="savings-grid">
-        {goals.map((g) => (
-          <GoalCard
-            key={g.id}
-            goal={g}
-            onEdit={(goal) => setEditingGoal(goal)}
-            onDelete={handleDelete}
-            onAddEntry={(goal) => setEntryGoal(goal)}
-          />
-        ))}
-      </div>
+      {goals.length > 0 && (
+        <>
+          {/* View buttons */}
+          <div class="sv-controls">
+            <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} onClick={() => setSavingsView("annual")}>META ANUAL</button>
+            <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} onClick={() => setSavingsView("projection")}>PROYECCIÓN</button>
+            <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} onClick={() => setSavingsView("staircase")}>ACUMULADO</button>
+          </div>
+
+          {/* Views */}
+          {savingsView === "annual" && (
+            <AnnualGoal
+              goalName={goals[0]?.name || "Ahorro"}
+              targetAmount={totalTarget || 2000000}
+              currentSaved={totalSaved}
+              monthlyContribution={goals[0]?.monthly_contribution || null}
+              monthlyIncome={null}
+              monthlyData={goals.map((g, i) => ({
+                month: new Date(2026, i, 1).toLocaleDateString("es-CL", { month: "short" }).toUpperCase().replace(".", ""),
+                amount: g.current_amount,
+                is_current: i === goals.length - 1,
+                is_future: false,
+              }))}
+              onAddEntry={() => goals[0] && setEntryGoal(goals[0])}
+            />
+          )}
+          {savingsView === "projection" && (
+            <AnnualProjection
+              projectedTotal={Math.round(totalSaved * 1.5)}
+              accumulated={totalSaved}
+              projected={Math.round(totalSaved * 0.5)}
+              monthlyData={goals.map((g, i) => ({
+                month: new Date(2026, i, 1).toLocaleDateString("es-CL", { month: "short" }).toUpperCase().replace(".", ""),
+                amount: g.current_amount,
+                is_past: i < goals.length - 1,
+                is_current: i === goals.length - 1,
+                is_future: false,
+              }))}
+            />
+          )}
+          {savingsView === "staircase" && (
+            <CumulativeStaircase
+              totalSaved={totalSaved}
+              projectionAmount={Math.round(totalSaved * 1.5)}
+              monthlyData={goals.map((g, i) => ({
+                month: new Date(2026, i, 1).toLocaleDateString("es-CL", { month: "short" }).toUpperCase().replace(".", ""),
+                amount: g.current_amount,
+                cumulative: goals.slice(0, i + 1).reduce((s, g2) => s + g2.current_amount, 0),
+                is_current: i === goals.length - 1,
+                is_future: false,
+              }))}
+              onAddEntry={() => goals[0] && setEntryGoal(goals[0])}
+            />
+          )}
+
+          {/* Goals list */}
+          <div class="savings-header" style="margin-top:var(--space-lg)">
+            <h2 class="savings-section-title">METAS DE AHORRO</h2>
+            <button class="btn-primary" onClick={() => setShowGoalForm(true)}>
+              <TctIcon name="plus" size={14} /> Nueva meta
+            </button>
+          </div>
+          <div class="savings-grid">
+            {goals.map((g) => (
+              <GoalCard
+                key={g.id}
+                goal={g}
+                onEdit={(goal) => setEditingGoal(goal)}
+                onDelete={handleDelete}
+                onAddEntry={(goal) => setEntryGoal(goal)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Modals */}
       {showGoalForm && <GoalForm onSave={handleCreate} onCancel={() => setShowGoalForm(false)} />}
