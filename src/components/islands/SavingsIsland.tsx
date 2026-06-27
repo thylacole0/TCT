@@ -397,86 +397,73 @@ export default function SavingsIsland({ monthlyIncome = null }: { monthlyIncome?
         </div>
       </div>
 
-      {/* Header */}
-      <div class="savings-header">
+      {/* Error */}
+      {error && <div class="savings-error">{error}<button onClick={() => setError("")}>×</button></div>}
+
+      {/* View buttons — always visible, charts render at 0 when there are no goals/entries yet */}
+      <div class="sv-controls" aria-label="Vistas de ahorro">
+        <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} aria-pressed={savingsView === "annual"} onClick={() => setSavingsView("annual")}>3 META</button>
+        <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} aria-pressed={savingsView === "projection"} onClick={() => setSavingsView("projection")}>4 PROY</button>
+        <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} aria-pressed={savingsView === "staircase"} onClick={() => setSavingsView("staircase")}>5 ESC</button>
+      </div>
+
+      {/* Views */}
+      {savingsView === "annual" && (
+        <AnnualGoal
+          goalName={`Meta anual ${currentYear}`}
+          targetAmount={totalTarget || Math.max(projectedYearTotal, 1)}
+          currentSaved={yearlyAccumulated}
+          monthlyContribution={monthlyContributionTotal || null}
+          monthlyIncome={monthlyIncome}
+          monthlyData={annualMonthlyData}
+          year={currentYear}
+          onAddEntry={() => (selectedEntryGoal ? setEntryGoal(selectedEntryGoal) : setShowGoalForm(true))}
+        />
+      )}
+      {savingsView === "projection" && (
+        <AnnualProjection
+          projectedTotal={Math.round(projectedYearTotal)}
+          accumulated={Math.round(yearlyAccumulated)}
+          projected={Math.round(projectedFuture)}
+          monthlyData={projectionMonthlyData}
+          year={currentYear}
+          onAddEntry={() => (selectedEntryGoal ? setEntryGoal(selectedEntryGoal) : setShowGoalForm(true))}
+        />
+      )}
+      {savingsView === "staircase" && (
+        <CumulativeStaircase
+          totalSaved={Math.round(yearlyAccumulated)}
+          projectionAmount={Math.round(projectedYearTotal)}
+          monthlyData={staircaseMonthlyData}
+          year={currentYear}
+          onAddEntry={() => (selectedEntryGoal ? setEntryGoal(selectedEntryGoal) : setShowGoalForm(true))}
+        />
+      )}
+
+      {/* Goals list */}
+      <div class="savings-header" style="margin-top:var(--space-lg)">
         <h2 class="savings-section-title">METAS DE AHORRO</h2>
         <button class="btn-primary" onClick={() => setShowGoalForm(true)}>
           <TctIcon name="plus" size={14} /> Nueva meta
         </button>
       </div>
 
-      {/* Error */}
-      {error && <div class="savings-error">{error}<button onClick={() => setError("")}>×</button></div>}
-
-      {/* Loading */}
       {loading && <div class="savings-empty">[CARGANDO...]</div>}
-
-      {/* Empty */}
       {!loading && goals.length === 0 && !error && (
         <div class="savings-empty">[SIN METAS DE AHORRO]</div>
       )}
-
-      {goals.length > 0 && (
-        <>
-          {/* View buttons */}
-          <div class="sv-controls" aria-label="Vistas de ahorro">
-            <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} aria-pressed={savingsView === "annual"} onClick={() => setSavingsView("annual")}>3 META</button>
-            <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} aria-pressed={savingsView === "projection"} onClick={() => setSavingsView("projection")}>4 PROY</button>
-            <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} aria-pressed={savingsView === "staircase"} onClick={() => setSavingsView("staircase")}>5 ESC</button>
-          </div>
-
-          {/* Views */}
-          {savingsView === "annual" && (
-            <AnnualGoal
-              goalName={`Meta anual ${currentYear}`}
-              targetAmount={totalTarget || Math.max(projectedYearTotal, 1)}
-              currentSaved={yearlyAccumulated}
-              monthlyContribution={monthlyContributionTotal || null}
-              monthlyIncome={monthlyIncome}
-              monthlyData={annualMonthlyData}
-              year={currentYear}
-              onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
+      {!loading && goals.length > 0 && (
+        <div class="savings-grid">
+          {goals.map((g) => (
+            <GoalCard
+              key={g.id}
+              goal={g}
+              onEdit={(goal) => setEditingGoal(goal)}
+              onDelete={handleDelete}
+              onAddEntry={(goal) => setEntryGoal(goal)}
             />
-          )}
-          {savingsView === "projection" && (
-            <AnnualProjection
-              projectedTotal={Math.round(projectedYearTotal)}
-              accumulated={Math.round(yearlyAccumulated)}
-              projected={Math.round(projectedFuture)}
-              monthlyData={projectionMonthlyData}
-              year={currentYear}
-              onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
-            />
-          )}
-          {savingsView === "staircase" && (
-            <CumulativeStaircase
-              totalSaved={Math.round(yearlyAccumulated)}
-              projectionAmount={Math.round(projectedYearTotal)}
-              monthlyData={staircaseMonthlyData}
-              year={currentYear}
-              onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
-            />
-          )}
-
-          {/* Goals list */}
-          <div class="savings-header" style="margin-top:var(--space-lg)">
-            <h2 class="savings-section-title">METAS DE AHORRO</h2>
-            <button class="btn-primary" onClick={() => setShowGoalForm(true)}>
-              <TctIcon name="plus" size={14} /> Nueva meta
-            </button>
-          </div>
-          <div class="savings-grid">
-            {goals.map((g) => (
-              <GoalCard
-                key={g.id}
-                goal={g}
-                onEdit={(goal) => setEditingGoal(goal)}
-                onDelete={handleDelete}
-                onAddEntry={(goal) => setEntryGoal(goal)}
-              />
-            ))}
-          </div>
-        </>
+          ))}
+        </div>
       )}
 
       {/* Modals */}
