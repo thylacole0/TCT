@@ -376,38 +376,14 @@ export default function SavingsIsland({ monthlyIncome = null }: { monthlyIncome?
 
   return (
     <div class="savings-root">
-      {/* Overview */}
-      <div class="savings-overview">
-        <div class="savings-overview-card">
-          <div class="savings-overview-icon"><TctIcon name="piggy-bank" size={20} variant="dots" /></div>
-          <div>
-            <span class="savings-label">AHORROS TOTALES</span>
-            <span class="savings-value-lg">{formatCLP(totalSaved)}</span>
-          </div>
-        </div>
-        <div class="savings-overview-card">
-          <div class="savings-overview-icon"><TctIcon name="target" size={20} variant="dots" /></div>
-          <div>
-            <span class="savings-label">META GLOBAL</span>
-            <span class="savings-value-lg">{formatCLP(totalTarget)}</span>
-          </div>
-        </div>
-        <div class="savings-overview-card">
-          <ProgressBar current={totalSaved} target={totalTarget} color="var(--accent)" />
-        </div>
-      </div>
 
-      {/* Error */}
       {error && <div class="savings-error">{error}<button onClick={() => setError("")}>×</button></div>}
-
-      {/* View buttons — always visible, charts render at 0 when there are no goals/entries yet */}
       <div class="sv-controls" aria-label="Vistas de ahorro">
         <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} aria-pressed={savingsView === "annual"} onClick={() => setSavingsView("annual")}>3 META</button>
         <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} aria-pressed={savingsView === "projection"} onClick={() => setSavingsView("projection")}>4 PROY</button>
         <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} aria-pressed={savingsView === "staircase"} onClick={() => setSavingsView("staircase")}>5 ESC</button>
       </div>
 
-      {/* Views */}
       {savingsView === "annual" && (
         <AnnualGoal
           goalName={`Meta anual ${currentYear}`}
