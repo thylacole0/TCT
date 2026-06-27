@@ -229,6 +229,18 @@ function budgetTone(pct: number): "neutral" | "warning" | "danger" {
   return "neutral";
 }
 
+function dateAtNoon(iso: string) {
+  return new Date(`${iso}T12:00:00`);
+}
+
+function daysBetween(from: Date, to: Date) {
+  return Math.floor((to.getTime() - from.getTime()) / 86400000);
+}
+
+function mondayBasedDay(date: Date) {
+  return (date.getDay() + 6) % 7;
+}
+
 function ProgressLine({ pct, tone = "neutral" }: { pct: number; tone?: "neutral" | "warning" | "danger" }) {
   const width = Math.min(Math.max(pct, pct > 0 ? 2 : 0), 100);
   return (
@@ -690,23 +702,92 @@ export default function FinanzasPersonalesIsland() {
   const categoryTotals: Record<string, number> = {};
   categories.forEach((g) => { categoryTotals[g.category] = g.total; });
 
-  // Build weekly heatmap data from transactions
   const heatmapWeeks: any[][] = [];
   const heatmapLabels: string[] = [];
   const weekBreakdown: { label: string; values: Record<string, number> }[] = [];
   if (data?.from && data?.to) {
-    const from = new Date(data.from + "T12:00:00");
-    const to = new Date(data.to + "T12:00:00");
-    const weekCount = Math.ceil((to.getTime() - from.getTime()) / (7 * 86400000));
+    const from = dateAtNoon(data.from);
+    const to = dateAtNoon(data.to);
+    const gridStart = new Date(from);
+    gridStart.setDate(gridStart.getDate() - mondayBasedDay(from));
+    const gridEnd = new Date(to);
+    gridEnd.setDate(gridEnd.getDate() + (6 - mondayBasedDay(to)));
+    const weekCount = Math.max(1, Math.floor(daysBetween(gridStart, gridEnd) / 7) + 1);
+    const dayCategoryTotals: Record<string, number>[][] = [];
+    const dayTotals: number[][] = [];
+
     for (let w = 0; w < weekCount; w++) {
-      const wStart = new Date(from);
-      wStart.setDate(wStart.getDate() + w * 7);
-      const wEnd = new Date(wStart);
-      wEnd.setDate(wEnd.getDate() + 6);
       heatmapLabels.push(`S${w + 1}`);
-      const weekVals: Record<string, number> = {};
-      // Initialize categories
+      heatmapWeeks.push(Array(7).fill(null));
+      dayCategoryTotals.push(Array.from({ length: 7 }, () => ({})));
+      dayTotals.push(Array(7).fill(0));
+      const weekVals: Record<string, number> = Object.fromEntries(CATEGORIES.map((category: string) => [category, 0]));
       weekBreakdown.push({ label: `S${w + 1}`, values: weekVals });
+    }
+
+    const addSummaryAmount = (dateIso: string, category: string, amount: number) => {
+      const date = dateAtNoon(dateIso);
+      if (date < from || date > to || amount <= 0) return;
+      const offset = daysBetween(gridStart, date);
+      const weekIndex = Math.floor(offset / 7);
+      const dayIndex = offset % 7;
+      if (!weekBreakdown[weekIndex] || dayIndex < 0 || dayIndex > 6) return;
+      const normalizedCategory = category || "Otros";
+      weekBreakdown[weekIndex].values[normalizedCategory] = (weekBreakdown[weekIndex].values[normalizedCategory] || 0) + amount;
+      dayCategoryTotals[weekIndex][dayIndex][normalizedCategory] = (dayCategoryTotals[weekIndex][dayIndex][normalizedCategory] || 0) + amount;
+      dayTotals[weekIndex][dayIndex] += amount;
+    };
+
+    categories.forEach((group) => {
+      group.transactions.forEach((tx) => {
+        addSummaryAmount(tx.expense_date, tx.category || group.category, Number(tx.amount) || 0);
+      });
+    });
+
+    installments.forEach((inst) => {
+      addSummaryAmount(data.from, inst.category || "Otros", Number(inst.monthly_amount) || 0);
+    });
+
+    const maxDayTotal = Math.max(1, ...dayTotals.flat());
+    for (let w = 0; w < weekCount; w++) {
+      for (let d = 0; d < 7; d++) {
+        const date = new Date(gridStart);
+        date.setDate(date.getDate() + w * 7 + d);
+        if (date < from || date > to) {
+          heatmapWeeks[w][d] = null;
+          continue;
+        }
+
+        const total = dayTotals[w][d];
+        if (total <= 0) {
+          heatmapWeeks[w][d] = null;
+          continue;
+        }
+
+        const sorted = Object.entries(dayCategoryTotals[w][d])
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2);
+        const isToday = date.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+
+        if (sorted.length >= 2) {
+          const firstPct = Math.round((sorted[0][1] / total) * 100);
+          heatmapWeeks[w][d] = {
+            data: sorted.map(([category, value], index) => ({
+              color: categoryColor(category),
+              pct: index === 0 ? Math.max(8, Math.min(92, firstPct)) : Math.round((value / total) * 100),
+            })),
+            isToday,
+          };
+        } else {
+          heatmapWeeks[w][d] = {
+            data: {
+              color: categoryColor(sorted[0][0]),
+              intensity: 0.18 + Math.min(1, total / maxDayTotal) * 0.74,
+            },
+            isToday,
+          };
+        }
+      }
     }
   }
   // Default empty heatmap
@@ -870,8 +951,8 @@ export default function FinanzasPersonalesIsland() {
             <div class="fp-summary-header">
               <span class="fh-label">RESUMEN</span>
               <div class="fp-summary-tabs">
-                <button class={`fp-summary-tab ${summaryView === "heatmap" ? "active" : ""}`} onClick={() => setSummaryView("heatmap")}>MAPA</button>
-                <button class={`fp-summary-tab ${summaryView === "crossgrid" ? "active" : ""}`} onClick={() => setSummaryView("crossgrid")}>SEMANAL</button>
+                <button class={`fp-summary-tab ${summaryView === "heatmap" ? "active" : ""}`} aria-pressed={summaryView === "heatmap"} onClick={() => setSummaryView("heatmap")}>P1 MAPA</button>
+                <button class={`fp-summary-tab ${summaryView === "crossgrid" ? "active" : ""}`} aria-pressed={summaryView === "crossgrid"} onClick={() => setSummaryView("crossgrid")}>P2 SEMANA</button>
               </div>
             </div>
             {summaryView === "crossgrid" ? (

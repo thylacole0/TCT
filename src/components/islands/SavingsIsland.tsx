@@ -21,6 +21,15 @@ interface SavingsGoal {
   progress_pct?: number;
 }
 
+interface SavingsEntry {
+  id: string;
+  goal_id: string;
+  amount: number;
+  entry_date: string;
+  notes: string | null;
+  created_at: string;
+}
+
 // ── Helpers ──
 function formatCLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
@@ -33,6 +42,8 @@ function monthsRemaining(current: number, target: number, monthly: number): numb
   if (!monthly || monthly <= 0 || current >= target) return null;
   return Math.ceil((target - current) / monthly);
 }
+
+const MONTHS_ABBR = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
 
 // ── Sub-components ──
 
@@ -216,6 +227,7 @@ function EntryForm({
 
 export default function SavingsIsland() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [entries, setEntries] = useState<SavingsEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showGoalForm, setShowGoalForm] = useState(false);
@@ -227,10 +239,16 @@ export default function SavingsIsland() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/savings/goals");
-      if (!r.ok) throw new Error((await r.json()).error || "Error al cargar metas");
-      const data = await r.json();
-      setGoals(data.goals || []);
+      const [goalsRes, entriesRes] = await Promise.all([
+        fetch("/api/savings/goals"),
+        fetch("/api/savings/entries"),
+      ]);
+      if (!goalsRes.ok) throw new Error((await goalsRes.json()).error || "Error al cargar metas");
+      if (!entriesRes.ok) throw new Error((await entriesRes.json()).error || "Error al cargar aportes");
+      const goalsData = await goalsRes.json();
+      const entriesData = await entriesRes.json();
+      setGoals(goalsData.goals || []);
+      setEntries(entriesData.entries || []);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -300,6 +318,61 @@ export default function SavingsIsland() {
 
   const totalSaved = goals.reduce((s, g) => s + g.current_amount, 0);
   const totalTarget = goals.reduce((s, g) => s + g.target_amount, 0);
+  const monthlyContributionTotal = goals.reduce((s, g) => s + (Number(g.monthly_contribution) || 0), 0);
+  const selectedEntryGoal = goals[0] || null;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonthIndex = now.getMonth();
+  const actualByMonth = Array(12).fill(0) as number[];
+  const yearEntries = entries.filter((entry) => entry.entry_date?.slice(0, 4) === String(currentYear));
+
+  yearEntries.forEach((entry) => {
+    const month = Number(entry.entry_date.slice(5, 7)) - 1;
+    if (month >= 0 && month < 12) {
+      actualByMonth[month] += Number(entry.amount) || 0;
+    }
+  });
+
+  if (yearEntries.length === 0 && totalSaved > 0) {
+    actualByMonth[currentMonthIndex] = totalSaved;
+  }
+
+  const completedMonths = actualByMonth.slice(0, currentMonthIndex + 1);
+  const monthsWithSavings = completedMonths.filter((amount) => amount !== 0).length;
+  const yearlyAccumulated = completedMonths.reduce((sum, amount) => sum + amount, 0);
+  const avgMonthly = monthsWithSavings > 0 ? yearlyAccumulated / monthsWithSavings : 0;
+  const projectionMonthly = monthlyContributionTotal > 0 ? monthlyContributionTotal : avgMonthly;
+  const remainingMonthCount = Math.max(0, 11 - currentMonthIndex);
+  const projectedFuture = projectionMonthly * remainingMonthCount;
+  const projectedYearTotal = yearlyAccumulated + projectedFuture;
+
+  const annualMonthlyData = MONTHS_ABBR.map((month, index) => ({
+    month,
+    amount: index <= currentMonthIndex ? actualByMonth[index] : 0,
+    is_current: index === currentMonthIndex,
+    is_future: index > currentMonthIndex,
+  }));
+
+  const projectionMonthlyData = MONTHS_ABBR.map((month, index) => ({
+    month,
+    amount: index <= currentMonthIndex ? actualByMonth[index] : projectionMonthly,
+    is_past: index < currentMonthIndex,
+    is_current: index === currentMonthIndex,
+    is_future: index > currentMonthIndex,
+  }));
+
+  let runningTotal = 0;
+  const staircaseMonthlyData = MONTHS_ABBR.map((month, index) => {
+    const amount = index <= currentMonthIndex ? actualByMonth[index] : projectionMonthly;
+    runningTotal += amount;
+    return {
+      month,
+      amount,
+      cumulative: runningTotal,
+      is_current: index === currentMonthIndex,
+      is_future: index > currentMonthIndex,
+    };
+  });
 
   return (
     <div class="savings-root">
@@ -346,55 +419,38 @@ export default function SavingsIsland() {
       {goals.length > 0 && (
         <>
           {/* View buttons */}
-          <div class="sv-controls">
-            <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} onClick={() => setSavingsView("annual")}>META ANUAL</button>
-            <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} onClick={() => setSavingsView("projection")}>PROYECCIÓN</button>
-            <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} onClick={() => setSavingsView("staircase")}>ACUMULADO</button>
+          <div class="sv-controls" aria-label="Vistas de ahorro">
+            <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} aria-pressed={savingsView === "annual"} onClick={() => setSavingsView("annual")}>3 META</button>
+            <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} aria-pressed={savingsView === "projection"} onClick={() => setSavingsView("projection")}>4 PROY</button>
+            <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} aria-pressed={savingsView === "staircase"} onClick={() => setSavingsView("staircase")}>5 ESC</button>
           </div>
 
           {/* Views */}
           {savingsView === "annual" && (
             <AnnualGoal
-              goalName={goals[0]?.name || "Ahorro"}
-              targetAmount={totalTarget || 2000000}
-              currentSaved={totalSaved}
-              monthlyContribution={goals[0]?.monthly_contribution || null}
+              goalName={`Meta anual ${currentYear}`}
+              targetAmount={totalTarget || Math.max(projectedYearTotal, 1)}
+              currentSaved={yearlyAccumulated}
+              monthlyContribution={monthlyContributionTotal || null}
               monthlyIncome={null}
-              monthlyData={goals.map((g, i) => ({
-                month: new Date(2026, i, 1).toLocaleDateString("es-CL", { month: "short" }).toUpperCase().replace(".", ""),
-                amount: g.current_amount,
-                is_current: i === goals.length - 1,
-                is_future: false,
-              }))}
-              onAddEntry={() => goals[0] && setEntryGoal(goals[0])}
+              monthlyData={annualMonthlyData}
+              onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
             />
           )}
           {savingsView === "projection" && (
             <AnnualProjection
-              projectedTotal={Math.round(totalSaved * 1.5)}
-              accumulated={totalSaved}
-              projected={Math.round(totalSaved * 0.5)}
-              monthlyData={goals.map((g, i) => ({
-                month: new Date(2026, i, 1).toLocaleDateString("es-CL", { month: "short" }).toUpperCase().replace(".", ""),
-                amount: g.current_amount,
-                is_past: i < goals.length - 1,
-                is_current: i === goals.length - 1,
-                is_future: false,
-              }))}
+              projectedTotal={Math.round(projectedYearTotal)}
+              accumulated={Math.round(yearlyAccumulated)}
+              projected={Math.round(projectedFuture)}
+              monthlyData={projectionMonthlyData}
             />
           )}
           {savingsView === "staircase" && (
             <CumulativeStaircase
-              totalSaved={totalSaved}
-              projectionAmount={Math.round(totalSaved * 1.5)}
-              monthlyData={goals.map((g, i) => ({
-                month: new Date(2026, i, 1).toLocaleDateString("es-CL", { month: "short" }).toUpperCase().replace(".", ""),
-                amount: g.current_amount,
-                cumulative: goals.slice(0, i + 1).reduce((s, g2) => s + g2.current_amount, 0),
-                is_current: i === goals.length - 1,
-                is_future: false,
-              }))}
-              onAddEntry={() => goals[0] && setEntryGoal(goals[0])}
+              totalSaved={Math.round(yearlyAccumulated)}
+              projectionAmount={Math.round(projectedYearTotal)}
+              monthlyData={staircaseMonthlyData}
+              onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
             />
           )}
 
