@@ -840,7 +840,7 @@ export default function FinanzasPersonalesIsland() {
       </div>
 
       {activeTab === "ahorros" ? (
-        <SavingsIsland />
+        <SavingsIsland monthlyIncome={income} />
       ) : (
       <>
       <div class="fp-top-stack">

@@ -225,7 +225,7 @@ function EntryForm({
 
 // ── Main Island ──
 
-export default function SavingsIsland() {
+export default function SavingsIsland({ monthlyIncome = null }: { monthlyIncome?: number | null }) {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [entries, setEntries] = useState<SavingsEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -432,8 +432,9 @@ export default function SavingsIsland() {
               targetAmount={totalTarget || Math.max(projectedYearTotal, 1)}
               currentSaved={yearlyAccumulated}
               monthlyContribution={monthlyContributionTotal || null}
-              monthlyIncome={null}
+              monthlyIncome={monthlyIncome}
               monthlyData={annualMonthlyData}
+              year={currentYear}
               onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
             />
           )}
@@ -443,6 +444,8 @@ export default function SavingsIsland() {
               accumulated={Math.round(yearlyAccumulated)}
               projected={Math.round(projectedFuture)}
               monthlyData={projectionMonthlyData}
+              year={currentYear}
+              onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
             />
           )}
           {savingsView === "staircase" && (
@@ -450,6 +453,7 @@ export default function SavingsIsland() {
               totalSaved={Math.round(yearlyAccumulated)}
               projectionAmount={Math.round(projectedYearTotal)}
               monthlyData={staircaseMonthlyData}
+              year={currentYear}
               onAddEntry={() => selectedEntryGoal && setEntryGoal(selectedEntryGoal)}
             />
           )}

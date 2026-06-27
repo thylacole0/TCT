@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 
 interface MonthlyEntry {
-  month: string;       // "ENE", "FEB", etc.
+  month: string;
   amount: number;
   is_current: boolean;
   is_future: boolean;
@@ -14,6 +14,7 @@ interface Props {
   monthlyContribution: number | null;
   monthlyIncome: number | null;
   monthlyData: MonthlyEntry[];
+  year?: number;
   onAddEntry?: () => void;
 }
 
@@ -21,37 +22,46 @@ function formatCLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
 
+function formatCompactCLP(n: number) {
+  const rounded = Math.round(n);
+  if (Math.abs(rounded) >= 1000000) {
+    const value = rounded / 1000000;
+    return `$${value.toLocaleString("es-CL", { maximumFractionDigits: value % 1 === 0 ? 0 : 1 })}M`;
+  }
+  if (Math.abs(rounded) >= 1000) return `$${Math.round(rounded / 1000).toLocaleString("es-CL")}k`;
+  return formatCLP(rounded);
+}
+
 function formatPct(n: number) {
   return `${Math.round(n)}%`;
 }
 
 export default function AnnualGoal({
-  goalName,
   targetAmount,
   currentSaved,
   monthlyContribution,
   monthlyIncome,
   monthlyData,
+  year = new Date().getFullYear(),
   onAddEntry,
 }: Props) {
   const progressPct = targetAmount > 0 ? Math.min(100, (currentSaved / targetAmount) * 100) : 0;
   const salaryPct = monthlyIncome && monthlyIncome > 0
-    ? (monthlyContribution || 0) / monthlyIncome * 100
+    ? ((monthlyContribution || 0) / monthlyIncome) * 100
     : null;
   const monthsRemaining = monthlyContribution && monthlyContribution > 0 && currentSaved < targetAmount
     ? Math.ceil((targetAmount - currentSaved) / monthlyContribution)
     : null;
 
-  // Average monthly from past + current months
-  const completedMonths = monthlyData.filter((m) => !m.is_future);
-  const avgMonthly = completedMonths.length > 0
-    ? completedMonths.reduce((s, m) => s + m.amount, 0) / completedMonths.length
+  const visibleMonths = monthlyData.filter((m) => !m.is_future);
+  const registeredMonths = visibleMonths.filter((m) => m.amount > 0);
+  const avgMonthly = registeredMonths.length > 0
+    ? registeredMonths.reduce((s, m) => s + m.amount, 0) / registeredMonths.length
     : 0;
 
-  // SVG Donut Ring
-  const size = 180;
+  const size = 190;
   const center = size / 2;
-  const radius = 68;
+  const radius = 70;
   const strokeWidth = 16;
   const circumference = 2 * Math.PI * radius;
   const dashLength = (progressPct / 100) * circumference;
@@ -59,101 +69,71 @@ export default function AnnualGoal({
 
   return (
     <div class="sav-goal-root">
-      {/* Header */}
-      <h2 class="sav-goal-name">{goalName}</h2>
-
-      {/* Donut Ring */}
       <div class="sav-goal-donut">
         <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
-          {/* Background track */}
-          <circle
-            cx={center}
-            cy={center}
-            r={radius}
-            fill="none"
-            stroke="var(--surface)"
-            stroke-width={strokeWidth}
-          />
-          {/* Progress arc — rotated to start from top */}
+          <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--surface)" stroke-width={strokeWidth} />
           <g transform={`rotate(-90 ${center} ${center})`}>
             <circle
               cx={center}
               cy={center}
               r={radius}
               fill="none"
-              stroke="var(--accent)"
+              stroke="var(--success)"
               stroke-width={strokeWidth}
               stroke-dasharray={`${dashLength} ${remaining}`}
               stroke-linecap="round"
               class="sav-goal-donut-arc"
             />
           </g>
-          {/* Center text */}
-          <text x={center} y={center - 6} text-anchor="middle" class="sav-goal-donut-pct">
-            {formatPct(progressPct)}
+          <text x={center} y={center - 4} text-anchor="middle" class="sav-goal-donut-pct">
+            {formatCompactCLP(currentSaved)}
           </text>
-          <text x={center} y={center + 16} text-anchor="middle" class="sav-goal-donut-label">
-            AHORRADO
+          <text x={center} y={center + 18} text-anchor="middle" class="sav-goal-donut-label">
+            {formatPct(progressPct)} DE LA META
           </text>
         </svg>
       </div>
 
-      {/* Stats Row */}
-      <div class="sav-goal-stats">
+      <div class="sav-goal-target">META ANUAL {year}: {formatCLP(targetAmount)}</div>
+
+      <div class="sav-goal-stats sav-goal-stats-ref">
         <div class="sav-goal-stat">
-          <span class="sav-goal-stat-value">{formatCLP(currentSaved)}</span>
-          <span class="sav-goal-stat-label">AHORRADO</span>
-        </div>
-        <div class="sav-goal-stat">
-          <span class="sav-goal-stat-value">{formatCLP(targetAmount)}</span>
-          <span class="sav-goal-stat-label">META</span>
-        </div>
-        <div class="sav-goal-stat">
-          <span class="sav-goal-stat-value">{formatCLP(avgMonthly)}</span>
           <span class="sav-goal-stat-label">PROMEDIO</span>
+          <span class="sav-goal-stat-value">{formatCLP(avgMonthly)}</span>
         </div>
-        {salaryPct !== null && (
-          <div class="sav-goal-stat">
-            <span class="sav-goal-stat-value">{formatPct(salaryPct)}</span>
-            <span class="sav-goal-stat-label">% SUELDO</span>
-          </div>
-        )}
-        {monthsRemaining !== null && (
-          <div class="sav-goal-stat">
-            <span class="sav-goal-stat-value">{monthsRemaining}</span>
-            <span class="sav-goal-stat-label">{monthsRemaining === 1 ? "MES" : "MESES"}</span>
-          </div>
-        )}
+        <div class="sav-goal-stat">
+          <span class="sav-goal-stat-label">% SUELDO</span>
+          <span class="sav-goal-stat-value sav-goal-stat-green">{salaryPct === null ? "-" : formatPct(salaryPct)}</span>
+        </div>
+        <div class="sav-goal-stat">
+          <span class="sav-goal-stat-label">AL RITMO ACTUAL</span>
+          <span class="sav-goal-stat-value">{monthsRemaining === null ? "-" : `${monthsRemaining} MES`}</span>
+        </div>
       </div>
 
-      {/* Monthly Register */}
       <div class="sav-goal-register">
         <h3 class="sav-goal-register-title">REGISTRO MENSUAL</h3>
         <div class="sav-goal-register-list">
-          {monthlyData.map((entry) => {
+          {visibleMonths.map((entry) => {
             const pctOfGoal = targetAmount > 0 ? (entry.amount / targetAmount) * 100 : 0;
             const isCurrentPending = entry.is_current && entry.amount === 0;
 
             return (
               <div
                 key={entry.month}
-                class={`sav-goal-row ${entry.is_current ? "sav-goal-row-current" : ""} ${entry.is_future ? "sav-goal-row-future" : ""} ${isCurrentPending ? "sav-goal-row-pending" : ""}`}
+                class={`sav-goal-row ${entry.is_current ? "sav-goal-row-current" : ""} ${isCurrentPending ? "sav-goal-row-pending" : ""}`}
               >
-                <span class="sav-goal-row-month">{entry.month}</span>
+                <span class="sav-goal-row-month">{entry.month} {year}</span>
                 {isCurrentPending ? (
                   <span class="sav-goal-row-pending-label">PENDIENTE</span>
                 ) : (
-                  <span class={`sav-goal-row-amount ${entry.is_future ? "sav-goal-row-amount-dim" : ""}`}>
-                    {entry.is_future ? "—" : formatCLP(entry.amount)}
-                  </span>
+                  <>
+                    <span class="sav-goal-row-pct">{formatPct(pctOfGoal)}</span>
+                    <span class="sav-goal-row-amount">{formatCLP(entry.amount)}</span>
+                  </>
                 )}
-                <span class={`sav-goal-row-pct ${entry.is_future ? "sav-goal-row-pct-dim" : ""}`}>
-                  {entry.is_future ? "—" : formatPct(pctOfGoal)}
-                </span>
                 {isCurrentPending && onAddEntry && (
-                  <button class="sav-goal-add-btn" onClick={onAddEntry}>
-                    + AÑADIR
-                  </button>
+                  <button class="sav-goal-add-btn" onClick={onAddEntry}>+ AÑADIR</button>
                 )}
               </div>
             );
