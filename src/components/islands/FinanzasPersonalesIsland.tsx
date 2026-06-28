@@ -704,7 +704,7 @@ export default function FinanzasPersonalesIsland() {
 
   const heatmapWeeks: any[][] = [];
   const heatmapLabels: string[] = [];
-  const weekBreakdown: { label: string; values: Record<string, number> }[] = [];
+  const weekBreakdown: { label: string; range?: string; values: Record<string, number> }[] = [];
   if (data?.from && data?.to) {
     const from = dateAtNoon(data.from);
     const to = dateAtNoon(data.to);
@@ -716,13 +716,29 @@ export default function FinanzasPersonalesIsland() {
     const dayCategoryTotals: Record<string, number>[][] = [];
     const dayTotals: number[][] = [];
 
+    // Short date-range label per week, clamped to the active period (imagen 2),
+    // e.g. "20-26M", "3-9 Jun". Month suffix appears only when the week spans
+    // two months or to disambiguate; we keep it compact like the prototype.
+    const monthAbbr = (d: Date) => d.toLocaleDateString("es-CL", { month: "short" }).replace(/\./g, "");
+    const weekRange = (w: number) => {
+      const start = new Date(gridStart);
+      start.setDate(start.getDate() + w * 7);
+      if (start < from) start.setTime(from.getTime());
+      const end = new Date(gridStart);
+      end.setDate(end.getDate() + w * 7 + 6);
+      if (end > to) end.setTime(to.getTime());
+      const sameMonth = start.getMonth() === end.getMonth();
+      if (sameMonth) return `${start.getDate()}-${end.getDate()} ${monthAbbr(end)}`;
+      return `${start.getDate()}${monthAbbr(start)}-${end.getDate()}${monthAbbr(end)}`;
+    };
+
     for (let w = 0; w < weekCount; w++) {
       heatmapLabels.push(`S${w + 1}`);
       heatmapWeeks.push(Array(7).fill(null));
       dayCategoryTotals.push(Array.from({ length: 7 }, () => ({})));
       dayTotals.push(Array(7).fill(0));
       const weekVals: Record<string, number> = Object.fromEntries(CATEGORIES.map((category: string) => [category, 0]));
-      weekBreakdown.push({ label: `S${w + 1}`, values: weekVals });
+      weekBreakdown.push({ label: `S${w + 1}`, range: weekRange(w), values: weekVals });
     }
 
     const addSummaryAmount = (dateIso: string, category: string, amount: number) => {
@@ -767,7 +783,23 @@ export default function FinanzasPersonalesIsland() {
         const sorted = Object.entries(dayCategoryTotals[w][d])
           .sort((a, b) => b[1] - a[1])
           .slice(0, 2);
-        const isToday = date.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+        const isoDate = date.toISOString().slice(0, 10);
+        const isToday = isoDate === new Date().toISOString().slice(0, 10);
+
+        // Full per-category breakdown for the day-detail panel (imagen 3).
+        const breakdown = Object.entries(dayCategoryTotals[w][d])
+          .sort((a, b) => b[1] - a[1])
+          .map(([category, value]) => ({
+            category,
+            color: categoryColor(category),
+            amount: value,
+            pct: Math.round((value / total) * 100),
+          }));
+        const dateLabel = date
+          .toLocaleDateString("es-CL", { weekday: "short", day: "2-digit", month: "short" })
+          .toUpperCase()
+          .replace(/\./g, "");
+        const dayMeta = { date: isoDate, dateLabel, total, breakdown };
 
         if (sorted.length >= 2) {
           const firstPct = Math.round((sorted[0][1] / total) * 100);
@@ -777,6 +809,7 @@ export default function FinanzasPersonalesIsland() {
               pct: index === 0 ? Math.max(8, Math.min(92, firstPct)) : Math.round((value / total) * 100),
             })),
             isToday,
+            ...dayMeta,
           };
         } else {
           heatmapWeeks[w][d] = {
@@ -785,6 +818,7 @@ export default function FinanzasPersonalesIsland() {
               intensity: 0.18 + Math.min(1, total / maxDayTotal) * 0.74,
             },
             isToday,
+            ...dayMeta,
           };
         }
       }
