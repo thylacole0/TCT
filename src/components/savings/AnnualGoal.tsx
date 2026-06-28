@@ -81,7 +81,7 @@ export default function AnnualGoal({
               stroke="var(--success)"
               stroke-width={strokeWidth}
               stroke-dasharray={`${dashLength} ${remaining}`}
-              stroke-linecap="round"
+              stroke-linecap={dashLength > 0 ? "round" : "butt"}
               class="sav-goal-donut-arc"
             />
           </g>

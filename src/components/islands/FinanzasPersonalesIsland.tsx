@@ -844,10 +844,6 @@ export default function FinanzasPersonalesIsland() {
       ) : (
       <>
       <div class="fp-top-stack">
-        <div class="fp-title-row">
-          <span class="fh-label">FINANZAS PERSONALES</span>
-        </div>
-
         <div class="fp-month-nav" aria-label="Seleccionar mes">
           <button class="fp-nav-btn" onClick={goPrevMonth} aria-label="Mes anterior">
             <TctIcon name="chevronLeft" size={18} variant="dots" />

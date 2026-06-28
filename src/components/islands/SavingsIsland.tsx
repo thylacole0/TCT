@@ -379,15 +379,15 @@ export default function SavingsIsland({ monthlyIncome = null }: { monthlyIncome?
 
       {error && <div class="savings-error">{error}<button onClick={() => setError("")}>×</button></div>}
       <div class="sv-controls" aria-label="Vistas de ahorro">
-        <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} aria-pressed={savingsView === "annual"} onClick={() => setSavingsView("annual")}>3 META</button>
-        <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} aria-pressed={savingsView === "projection"} onClick={() => setSavingsView("projection")}>4 PROY</button>
-        <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} aria-pressed={savingsView === "staircase"} onClick={() => setSavingsView("staircase")}>5 ESC</button>
+        <button class={`sv-btn ${savingsView === "annual" ? "active" : ""}`} aria-pressed={savingsView === "annual"} onClick={() => setSavingsView("annual")}>Meta</button>
+        <button class={`sv-btn ${savingsView === "projection" ? "active" : ""}`} aria-pressed={savingsView === "projection"} onClick={() => setSavingsView("projection")}>Proyección</button>
+        <button class={`sv-btn ${savingsView === "staircase" ? "active" : ""}`} aria-pressed={savingsView === "staircase"} onClick={() => setSavingsView("staircase")}>Acumulado</button>
       </div>
 
       {savingsView === "annual" && (
         <AnnualGoal
           goalName={`Meta anual ${currentYear}`}
-          targetAmount={totalTarget || Math.max(projectedYearTotal, 1)}
+          targetAmount={totalTarget || projectedYearTotal}
           currentSaved={yearlyAccumulated}
           monthlyContribution={monthlyContributionTotal || null}
           monthlyIncome={monthlyIncome}
