@@ -70,28 +70,28 @@ export default function AnnualGoal({
   return (
     <div class="sav-goal-root">
       <div class="sav-goal-donut">
-        <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
-          <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--surface)" stroke-width={strokeWidth} />
-          <g transform={`rotate(-90 ${center} ${center})`}>
-            <circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke="var(--success)"
-              stroke-width={strokeWidth}
-              stroke-dasharray={`${dashLength} ${remaining}`}
-              stroke-linecap={dashLength > 0 ? "round" : "butt"}
-              class="sav-goal-donut-arc"
-            />
-          </g>
-          <text x={center} y={center - 4} text-anchor="middle" class="sav-goal-donut-pct">
-            {formatCompactCLP(currentSaved)}
-          </text>
-          <text x={center} y={center + 18} text-anchor="middle" class="sav-goal-donut-label">
-            {formatPct(progressPct)} DE LA META
-          </text>
-        </svg>
+        <div class="sav-goal-donut-graphic" style={{ width: size, height: size }}>
+          <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
+            <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--surface)" stroke-width={strokeWidth} />
+            <g transform={`rotate(-90 ${center} ${center})`}>
+              <circle
+                cx={center}
+                cy={center}
+                r={radius}
+                fill="none"
+                stroke="var(--success)"
+                stroke-width={strokeWidth}
+                stroke-dasharray={`${dashLength} ${remaining}`}
+                stroke-linecap={dashLength > 0 ? "round" : "butt"}
+                class="sav-goal-donut-arc"
+              />
+            </g>
+          </svg>
+          <div class="sav-goal-donut-center">
+            <span class="sav-goal-donut-pct">{formatCompactCLP(currentSaved)}</span>
+            <span class="sav-goal-donut-label">{formatPct(progressPct)} DE LA META</span>
+          </div>
+        </div>
       </div>
 
       <div class="sav-goal-target">META ANUAL {year}: {formatCLP(targetAmount)}</div>

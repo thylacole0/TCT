@@ -4311,20 +4311,36 @@ input[type="date"].fp-add-input {
   justify-content: center;
   align-items: center;
 }
+.sav-goal-donut-graphic {
+  position: relative;
+  display: inline-flex;
+}
+.sav-goal-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  pointer-events: none;
+}
 .sav-goal-donut-arc {
   transition: stroke-dasharray 0.6s var(--ease-out);
 }
 .sav-goal-donut-pct {
   font-family: var(--font-mono);
-  font-size: var(--display-md);
-  fill: var(--text-display);
+  font-size: 22px;
+  color: var(--success);
   font-weight: 700;
+  line-height: 1.1;
 }
 .sav-goal-donut-label {
   font-family: var(--font-mono);
-  font-size: var(--caption);
-  fill: var(--text-tertiary);
-  letter-spacing: 0.12em;
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.1em;
 }
 .sav-goal-stats {
   display: grid;
@@ -4781,14 +4797,16 @@ input[type="date"].fp-add-input {
 }
 
 .sav-goal-donut-pct {
-  font-size: 20px;
-  fill: var(--success);
+  font-size: 22px;
+  color: var(--success);
+  font-weight: 700;
   letter-spacing: 0;
 }
 
 .sav-goal-donut-label {
   font-size: 9px;
-  fill: var(--text-tertiary);
+  color: var(--text-secondary);
+  letter-spacing: 0.1em;
 }
 
 .sav-goal-target {

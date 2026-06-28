@@ -36,7 +36,11 @@ export default function CumulativeStaircase({
   const registeredSteps = monthlyData.filter((m) => !m.is_future && m.amount > 0);
   const chartSteps = registeredSteps.length > 0 ? registeredSteps : monthlyData.filter((m) => !m.is_future);
   const average = registeredSteps.length > 0 ? totalSaved / registeredSteps.length : 0;
-  const maxCum = Math.max(...chartSteps.map((m) => m.cumulative), projectionAmount, 1);
+  // Scale the bars to the real accumulated total (with a little headroom), NOT
+  // to the full-year projection — otherwise a big projection squashes every
+  // real bar into a flat sliver. The projection line is clamped separately.
+  const maxActual = Math.max(...chartSteps.map((m) => m.cumulative), 1);
+  const maxCum = maxActual * 1.15;
   const chartW = 340;
   const chartH = 126;
   const padLeft = 12;
@@ -47,16 +51,24 @@ export default function CumulativeStaircase({
   const plotH = chartH - padTop - padBottom;
   const stepCount = Math.max(chartSteps.length, 1);
   const stepW = plotW / (stepCount + 1);
+  // Cap bar width so a single (or few) month(s) renders as a proper bar with
+  // breathing room instead of a wide flat strip across the whole chart.
+  const barW = Math.min(stepW - 6, 44);
+  // Centre the bar within its slot (keeps narrow bars from hugging the left).
+  const barOffset = (stepW - barW) / 2;
 
   const sy = (value: number) => padTop + plotH - (value / maxCum) * plotH;
+  const barCenter = (i: number) => padLeft + i * stepW + barOffset + barW / 2;
   const linePoints = chartSteps.map((step, i) => ({
-    x: padLeft + i * stepW + stepW / 2,
+    x: barCenter(i),
     y: sy(step.cumulative),
   }));
   const realPathD = linePoints.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
   const lastPoint = linePoints[linePoints.length - 1];
   const projX = lastPoint ? lastPoint.x + stepW : padLeft + stepW;
-  const projY = sy(projectionAmount);
+  // Keep the projection marker inside the plot even when the projected year-end
+  // total far exceeds the accumulated bars.
+  const projY = Math.max(padTop + 6, sy(projectionAmount));
 
   return (
     <div class="sav-stair-root">
@@ -72,8 +84,7 @@ export default function CumulativeStaircase({
           <svg viewBox={`0 0 ${chartW} ${chartH}`} width="100%" height={chartH} class="sav-stair-chart">
             <line x1={padLeft} y1={padTop + plotH} x2={chartW - padRight} y2={padTop + plotH} stroke="var(--border-visible)" stroke-width="1" />
             {chartSteps.map((step, i) => {
-              const x = padLeft + i * stepW;
-              const barW = stepW - 4;
+              const x = padLeft + i * stepW + barOffset;
               const barH = (step.cumulative / maxCum) * plotH;
               const y = padTop + plotH - barH;
               const isLatest = i === chartSteps.length - 1;
