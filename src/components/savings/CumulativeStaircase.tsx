@@ -1,17 +1,33 @@
 /** @jsxImportSource preact */
 
+interface GoalSegment {
+  id: string;
+  name: string;
+  color: string;
+  value: number;
+}
+
 interface StairStep {
   month: string;
   amount: number;
   cumulative: number;
+  segments?: GoalSegment[];
   is_current: boolean;
   is_future: boolean;
+}
+
+interface GoalLegendItem {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
 }
 
 interface Props {
   totalSaved: number;
   monthlyData: StairStep[];
   projectionAmount: number;
+  goalLegend?: GoalLegendItem[];
   year?: number;
   onAddEntry?: () => void;
 }
@@ -31,6 +47,7 @@ export default function CumulativeStaircase({
   totalSaved,
   monthlyData,
   projectionAmount,
+  goalLegend = [],
   year = new Date().getFullYear(),
 }: Props) {
   const registeredSteps = monthlyData.filter((m) => !m.is_future && m.amount > 0);
@@ -88,11 +105,27 @@ export default function CumulativeStaircase({
               const barH = (step.cumulative / maxCum) * plotH;
               const y = padTop + plotH - barH;
               const isLatest = i === chartSteps.length - 1;
+              const segments = step.segments?.filter((s) => s.value > 0) || [];
+              const labelColor = isLatest ? "var(--success)" : "var(--text-tertiary)";
               return (
                 <g key={step.month}>
-                  <rect x={x} y={y} width={barW} height={barH} rx="2" fill={isLatest ? "var(--success)" : "var(--surface-raised)"} opacity={isLatest ? 1 : 0.95} />
-                  <text x={x + barW / 2} y={y - 5} text-anchor="middle" class="sav-stair-cum-label" fill={isLatest ? "var(--success)" : "var(--text-tertiary)"}>{formatCompactCLP(step.cumulative)}</text>
-                  <text x={x + barW / 2} y={padTop + plotH + 15} text-anchor="middle" class="sav-stair-bar-label" fill={isLatest ? "var(--success)" : "var(--text-tertiary)"}>{step.month}</text>
+                  {segments.length > 0 ? (
+                    // Stacked by goal: each segment's height is proportional to
+                    // that goal's cumulative contribution. Drawn bottom-up.
+                    (() => {
+                      let acc = 0;
+                      return segments.map((seg) => {
+                        const segH = (seg.value / maxCum) * plotH;
+                        const segY = padTop + plotH - segH - acc;
+                        acc += segH;
+                        return <rect key={seg.id} x={x} y={segY} width={barW} height={Math.max(segH, 0)} rx="1.5" fill={seg.color} opacity={isLatest ? 1 : 0.82} />;
+                      });
+                    })()
+                  ) : (
+                    <rect x={x} y={y} width={barW} height={barH} rx="2" fill={isLatest ? "var(--success)" : "var(--surface-raised)"} opacity={isLatest ? 1 : 0.95} />
+                  )}
+                  <text x={x + barW / 2} y={y - 5} text-anchor="middle" class="sav-stair-cum-label" fill={labelColor}>{formatCompactCLP(step.cumulative)}</text>
+                  <text x={x + barW / 2} y={padTop + plotH + 15} text-anchor="middle" class="sav-stair-bar-label" fill={labelColor}>{step.month}</text>
                 </g>
               );
             })}
@@ -106,6 +139,22 @@ export default function CumulativeStaircase({
           </svg>
         </div>
       </div>
+
+      {goalLegend.length > 0 && (
+        <div class="sav-goal-legend">
+          {goalLegend.map((g) => {
+            const share = totalSaved > 0 ? Math.round((g.amount / totalSaved) * 100) : 0;
+            return (
+              <div key={g.id} class="sav-goal-legend-item">
+                <span class="sav-goal-legend-dot" style={{ background: g.color }} />
+                <span class="sav-goal-legend-name">{g.name}</span>
+                <span class="sav-goal-legend-amount">{formatCompactCLP(g.amount)}</span>
+                <span class="sav-goal-legend-pct">{share}%</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div class="sav-stair-list">
         <h3 class="sav-stair-list-title">DETALLE MENSUAL</h3>

@@ -204,3 +204,141 @@ export const POST: APIRoute = async ({ request, locals }) => {
     goal_current_amount: newCurrentAmount,
   }, 201);
 };
+
+// ── Recalculate a goal's current_amount from the sum of its entries ──────────
+
+async function recalcGoalTotal(
+  supabase: ReturnType<typeof createAuthClient>,
+  goalId: string,
+  userId: string
+): Promise<{ total: number; error?: string }> {
+  const { data, error } = await supabase
+    .from("savings_entries")
+    .select("amount")
+    .eq("goal_id", goalId)
+    .eq("user_id", userId);
+
+  if (error) return { total: 0, error: error.message };
+
+  const total = (data as { amount: number }[]).reduce((sum, row) => sum + Number(row.amount), 0);
+
+  const { error: updateError } = await supabase
+    .from("savings_goals")
+    .update({ current_amount: total })
+    .eq("id", goalId)
+    .eq("user_id", userId);
+
+  return { total, error: updateError?.message };
+}
+
+// ── PATCH /api/savings/entries ── edit an existing aporte (amount/date/notes) ─
+
+export const PATCH: APIRoute = async ({ request, locals }) => {
+  const user = locals.user;
+  if (!user || !locals.accessToken) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  let body: { id?: string; amount?: unknown; entry_date?: string; notes?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+
+  const id = (body.id || "").trim();
+  if (!id) return json({ error: "id es requerido" }, 400);
+
+  const supabase = createAuthClient(locals.accessToken);
+
+  // Verify the entry exists and belongs to the user (and learn its goal_id).
+  const { data: existing, error: findError } = await supabase
+    .from("savings_entries")
+    .select("id, goal_id, user_id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (findError || !existing) {
+    return json({ error: "Aporte no encontrado o sin acceso" }, 404);
+  }
+
+  const updates: { amount?: number; entry_date?: string; notes?: string | null } = {};
+
+  if (body.amount !== undefined) {
+    const amount = toMoney(body.amount);
+    if (amount === 0) return json({ error: "amount no puede ser 0" }, 400);
+    updates.amount = amount;
+  }
+  if (body.entry_date !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.entry_date)) {
+      return json({ error: "entry_date debe ser YYYY-MM-DD" }, 400);
+    }
+    updates.entry_date = body.entry_date;
+  }
+  if (body.notes !== undefined) {
+    updates.notes = body.notes.trim() || null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return json({ error: "Nada que actualizar" }, 400);
+  }
+
+  const { data: entry, error: updateError } = await supabase
+    .from("savings_entries")
+    .update(updates)
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (updateError) return json({ error: updateError.message }, 500);
+
+  const { total, error: recalcError } = await recalcGoalTotal(supabase, (existing as any).goal_id, user.id);
+
+  return json({ ok: true, entry, goal_current_amount: total, warning: recalcError }, 200);
+};
+
+// ── DELETE /api/savings/entries ── remove an aporte ──────────────────────────
+
+export const DELETE: APIRoute = async ({ request, locals }) => {
+  const user = locals.user;
+  if (!user || !locals.accessToken) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  let body: { id?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+
+  const id = (body.id || "").trim();
+  if (!id) return json({ error: "id es requerido" }, 400);
+
+  const supabase = createAuthClient(locals.accessToken);
+
+  const { data: existing, error: findError } = await supabase
+    .from("savings_entries")
+    .select("id, goal_id, user_id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (findError || !existing) {
+    return json({ error: "Aporte no encontrado o sin acceso" }, 404);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("savings_entries")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (deleteError) return json({ error: deleteError.message }, 500);
+
+  const { total, error: recalcError } = await recalcGoalTotal(supabase, (existing as any).goal_id, user.id);
+
+  return json({ ok: true, goal_current_amount: total, warning: recalcError }, 200);
+};

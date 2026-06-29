@@ -290,6 +290,9 @@ export default function FinanzasPersonalesIsland() {
   const [reclassifyTarget, setReclassifyTarget] = useState<PersonalTransaction | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [activeTab, setActiveTab] = useState<"gastos" | "ahorros">("gastos");
+  // Sum of monthly contributions across all active savings goals, used to
+  // discount the estimated available income (sueldo − gastos − ahorro).
+  const [savingsMonthly, setSavingsMonthly] = useState(0);
   const [summaryView, setSummaryView] = useState<"heatmap" | "crossgrid">("heatmap");
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; kind: "expense" | "installment" } | null>(null);
@@ -373,10 +376,28 @@ export default function FinanzasPersonalesIsland() {
     }
   }, []);
 
+  const fetchSavingsMonthly = useCallback(async () => {
+    try {
+      const res = await fetch("/api/savings/goals");
+      if (!res.ok) return;
+      const json = await res.json();
+      const total = (json.goals || [])
+        .filter((g: any) => g.is_active !== false)
+        .reduce((sum: number, g: any) => sum + (Number(g.monthly_contribution) || 0), 0);
+      setSavingsMonthly(total);
+    } catch {
+      // savings discount is best-effort; ignore failures
+    }
+  }, []);
+
   useEffect(() => {
     fetchData(currentMonth);
     fetchMonthlyPlan(currentMonth);
   }, [currentMonth, fetchData, fetchMonthlyPlan]);
+
+  useEffect(() => {
+    fetchSavingsMonthly();
+  }, [fetchSavingsMonthly, activeTab]);
 
   // Close modals with Escape
   useEffect(() => {
@@ -837,7 +858,8 @@ export default function FinanzasPersonalesIsland() {
   const incomePctRaw = income > 0 ? (monthTotal / income) * 100 : 0;
   const totalCategoryBudget = Object.values(plan.category_budgets).reduce((sum, value) => sum + Number(value || 0), 0);
   const budgetSpentPct = totalCategoryBudget > 0 ? (monthTotal / totalCategoryBudget) * 100 : 0;
-  const remainingIncome = income > 0 ? income - monthTotal : 0;
+  // Estimated available = sueldo − gastos − aporte mensual a ahorros.
+  const remainingIncome = income > 0 ? income - monthTotal - savingsMonthly : 0;
   const activeCycleKey = data?.cycle_key || monthKey(currentMonth);
   const activePeriodLabel = data?.from && data?.to
     ? formatPersonalCycleLabel(data.from, data.to)
@@ -912,21 +934,39 @@ export default function FinanzasPersonalesIsland() {
           </button>
         </div>
 
-        <section class="fp-income-card dot-grid-subtle" aria-label="Sueldo mensual">
+        <section class="fp-income-card dot-grid-subtle" aria-label="Disponible mensual">
           <div class="fp-income-card-header">
-            <span class="dash-card-label">SUELDO MENSUAL</span>
+            <span class="dash-card-label">DISPONIBLE ESTIMADO</span>
             <button class="fp-inline-action" onClick={openPlanEditor}>
               <TctIcon name="edit" size={14} variant="dots" />
               {income > 0 ? "EDITAR" : "CONFIGURAR"}
             </button>
           </div>
-          <span class={`dash-budget-amount ${income <= 0 ? "fp-income-empty" : ""}`}>
-            {planLoading ? "[...]" : income > 0 ? formatCLP(income) : "[SUELDO NO CONFIGURADO]"}
-          </span>
-          {income > 0 && (
-            <span class="dash-budget-of fp-income-meta-card">
-              Disponible estimado: {formatCLP(Math.max(remainingIncome, 0))}
-              {remainingIncome < 0 ? " · sueldo sobrepasado" : ""}
+          {income > 0 ? (
+            <>
+              <span class={`dash-budget-amount ${remainingIncome < 0 ? "fp-income-over" : ""}`}>
+                {planLoading ? "[...]" : formatCLP(Math.max(remainingIncome, 0))}
+                {remainingIncome < 0 && <span class="fp-income-over-tag"> · SOBREPASADO</span>}
+              </span>
+              <div class="fp-income-breakdown">
+                <span class="fp-income-bd-item">
+                  Sueldo <strong>{formatCLP(income)}</strong>
+                </span>
+                <span class="fp-income-bd-item">
+                  Gastos <strong>{formatCLP(monthTotal)}</strong>
+                </span>
+                {savingsMonthly > 0 && (
+                  <>
+                    <span class="fp-income-bd-item">
+                      Ahorro <strong>{formatCLP(savingsMonthly)}</strong>
+                    </span>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <span class="dash-budget-amount fp-income-empty">
+              {planLoading ? "[...]" : "[SUELDO NO CONFIGURADO]"}
             </span>
           )}
           {planError && <div class="fp-soft-warning" role="status">{planError}</div>}
