@@ -6,6 +6,7 @@ import {
   formatPersonalCycleLabel,
   getPersonalCycleBounds,
   normalizePersonalBillingCycle,
+  todayChile,
   type BillingCycleDay,
   type PersonalBillingCycle,
 } from "../../lib/dates";
@@ -27,6 +28,9 @@ interface PersonalTransaction {
   created_at: string;
   source?: string | null;
   card_last4?: string | null;
+  original_amount?: number | null;
+  is_split?: boolean;
+  split_pair_id?: string | null;
 }
 
 interface CategoryGroup {
@@ -301,7 +305,7 @@ export default function FinanzasPersonalesIsland() {
   const [addMerchant, setAddMerchant] = useState("");
   const [addAmount, setAddAmount] = useState("");
   const [addCategory, setAddCategory] = useState("Otros");
-  const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [addDate, setAddDate] = useState(() => todayChile());
   const [adding, setAdding] = useState(false);
   const [installments, setInstallments] = useState<InstallmentEntry[]>([]);
   // Installment form
@@ -314,6 +318,11 @@ export default function FinanzasPersonalesIsland() {
   const [instCategory, setInstCategory] = useState("Otros");
   const [instStartMonth, setInstStartMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [savingInst, setSavingInst] = useState(false);
+  // Split expense
+  const [partnerInfo, setPartnerInfo] = useState<{ id: string; display_name: string } | null | undefined>(undefined);
+  const [splitTarget, setSplitTarget] = useState<PersonalTransaction | null>(null);
+  const [splitting, setSplitting] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
 
   const fetchData = useCallback(async (date: Date) => {
     setLoading(true);
@@ -331,6 +340,7 @@ export default function FinanzasPersonalesIsland() {
         setBillingCycle(nextCycle);
         setCycleStartInput(cycleDayInputValue(nextCycle.start_day));
         setCycleEndInput(cycleDayInputValue(nextCycle.end_day));
+        setCurrentMonth(currentCycleDate(nextCycle));
       }
       const categories = CATEGORIES.map((category: string) =>
         json.categories.find((g) => g.category === category) || {
@@ -399,9 +409,23 @@ export default function FinanzasPersonalesIsland() {
     fetchSavingsMonthly();
   }, [fetchSavingsMonthly, activeTab]);
 
+  // Fetch partner info on mount for expense splitting
+  useEffect(() => {
+    fetch("/api/profiles/list")
+      .then((r) => r.json())
+      .then((profiles) => {
+        if (Array.isArray(profiles) && profiles.length > 0) {
+          setPartnerInfo(profiles[0]);
+        } else {
+          setPartnerInfo(null);
+        }
+      })
+      .catch(() => setPartnerInfo(null));
+  }, []);
+
   // Close modals with Escape
   useEffect(() => {
-    if (!editingPlan && !reclassifyTarget && !deleteConfirm && !showAddModal && !showInstModal) return;
+    if (!editingPlan && !reclassifyTarget && !deleteConfirm && !showAddModal && !showInstModal && !splitTarget) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setEditingPlan(false);
@@ -411,11 +435,12 @@ export default function FinanzasPersonalesIsland() {
         setShowInstModal(false);
         setEditingInstallment(null);
         setConvertExpense(null);
+        setSplitTarget(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editingPlan, reclassifyTarget, deleteConfirm, showAddModal, showInstModal]);
+  }, [editingPlan, reclassifyTarget, deleteConfirm, showAddModal, showInstModal, splitTarget]);
 
   const goPrevMonth = () => {
     const prev = new Date(currentMonth);
@@ -597,6 +622,35 @@ export default function FinanzasPersonalesIsland() {
     }
   };
 
+  const executeSplit = async () => {
+    if (!splitTarget) return;
+    setSplitting(true);
+    setSplitError(null);
+    try {
+      const res = await fetch("/api/personal-expenses/split", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: splitTarget.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSplitError(
+          json.error === "no_partner"
+            ? "No se encontró otro usuario en el sistema para dividir este gasto."
+            : json.error || "Error al dividir el gasto"
+        );
+        return;
+      }
+      setSplitTarget(null);
+      setSplitError(null);
+      await fetchData(currentMonth);
+    } catch {
+      setSplitError("Error de conexión al dividir el gasto");
+    } finally {
+      setSplitting(false);
+    }
+  };
+
   const handleAddExpense = async () => {
     if (!addMerchant.trim() || !addAmount.trim()) return;
     setAdding(true);
@@ -620,7 +674,7 @@ export default function FinanzasPersonalesIsland() {
       setAddMerchant("");
       setAddAmount("");
       setAddCategory("Otros");
-      setAddDate(new Date().toISOString().slice(0, 10));
+      setAddDate(todayChile());
       setReclassifyError(null);
       await fetchData(currentMonth);
     } catch {
@@ -805,7 +859,7 @@ export default function FinanzasPersonalesIsland() {
           .sort((a, b) => b[1] - a[1])
           .slice(0, 2);
         const isoDate = date.toISOString().slice(0, 10);
-        const isToday = isoDate === new Date().toISOString().slice(0, 10);
+        const isToday = isoDate === todayChile();
 
         // Full per-category breakdown for the day-detail panel (imagen 3).
         const breakdown = Object.entries(dayCategoryTotals[w][d])
@@ -1094,8 +1148,10 @@ export default function FinanzasPersonalesIsland() {
                       <div class="fp-category-budget-row">
                         {budget > 0 ? (
                           <>
-                            <span>Presupuesto: {formatCLP(budget)} · {categoryBudgetPct.toFixed(0)}% usado</span>
-                            {categoryBudgetPct > 100 && <strong>SOBREPASADO</strong>}
+                            <span class="fp-budget-detail">Presupuesto: {formatCLP(budget)} · {categoryBudgetPct.toFixed(0)}% usado</span>
+                            <span class={`fp-budget-remaining ${categoryBudgetPct > 100 ? "fp-budget-over" : ""}`}>
+                              {categoryBudgetPct > 100 ? "SOBREPASADO" : `Restante ${formatCLP(budget - group.total)}`}
+                            </span>
                           </>
                         ) : (
                           <button class="fp-budget-empty-btn" onClick={openPlanEditor}>Definir presupuesto</button>
@@ -1134,6 +1190,12 @@ export default function FinanzasPersonalesIsland() {
                                       <TctIcon name="repeat" size={13} variant="dots" />
                                       CUOTAS
                                     </button>
+                                    {t.amount >= 20 && !t.is_split && !t.original_amount && (
+                                      <button class="fp-tx-category-btn fp-tx-installment-action" onClick={() => { setSplitTarget(t); setSplitError(null); }}>
+                                        <TctIcon name="scissors" size={13} variant="dots" />
+                                        DIVIDIR
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1148,6 +1210,9 @@ export default function FinanzasPersonalesIsland() {
                                   </button>
                                   <span class="fp-tx-amount">{formatCLP(t.amount)}</span>
                                 </div>
+                                {t.is_split && (
+                                  <div class="fp-tx-split-badge">DIVIDIDO</div>
+                                )}
                               </div>
                             ))}
                             {/* Show installments for this category */}
@@ -1558,6 +1623,71 @@ export default function FinanzasPersonalesIsland() {
                       ? "Convertir a cuotas"
                       : "Crear cuota"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {splitTarget && (
+        <div class="fp-modal" role="dialog" aria-modal="true" aria-label="Dividir gasto">
+          <button class="fp-modal-backdrop" aria-label="Cerrar" onClick={() => { if (!splitting) setSplitTarget(null); }} />
+          <div class="fp-modal-sheet fp-modal-sheet-compact">
+            <div class="fp-modal-head">
+              <div>
+                <span class="fh-label">DIVIDIR GASTO</span>
+                <h2>{transactionTitle(splitTarget)}</h2>
+              </div>
+              <button class="fp-icon-btn" onClick={() => { if (!splitting) setSplitTarget(null); }} aria-label="Cerrar">
+                <TctIcon name="x" size={18} variant="dots" />
+              </button>
+            </div>
+
+            <div class="fp-modal-body">
+              <p class="fp-split-original">Monto total · {formatCLP(splitTarget.amount)}</p>
+
+              {partnerInfo === undefined ? (
+                <p class="fp-split-loading">Buscando usuario para dividir...</p>
+              ) : partnerInfo === null ? (
+                <div class="fp-split-no-partner">
+                  <p>No se encontró otro usuario en el sistema para dividir este gasto.</p>
+                </div>
+              ) : (
+                <>
+                  <div class="fp-split-preview">
+                    <div class="fp-split-side">
+                      <span class="fp-split-label">TU PARTE</span>
+                      <span class="fp-split-amount">{formatCLP(Math.round(splitTarget.amount / 2))}</span>
+                    </div>
+                    <span class="fp-split-sep">/</span>
+                    <div class="fp-split-side">
+                      <span class="fp-split-label">SU PARTE</span>
+                      <span class="fp-split-amount">{formatCLP(splitTarget.amount - Math.round(splitTarget.amount / 2))}</span>
+                    </div>
+                  </div>
+                  <p class="fp-split-partner">con <strong>{partnerInfo.display_name}</strong></p>
+                </>
+              )}
+            </div>
+
+            {splitError && <div class="fp-modal-error" role="alert">{splitError}</div>}
+
+            <div class="fp-modal-actions">
+              <button
+                class="fp-secondary-btn"
+                onClick={() => setSplitTarget(null)}
+                disabled={splitting}
+              >
+                Cancelar
+              </button>
+              {partnerInfo && (
+                <button
+                  class="fp-primary-btn"
+                  onClick={executeSplit}
+                  disabled={splitting}
+                >
+                  {splitting ? "DIVIDIENDO..." : "CONFIRMAR"}
+                </button>
+              )}
             </div>
           </div>
         </div>

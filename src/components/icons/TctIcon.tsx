@@ -33,7 +33,8 @@ export type IconName =
   | "theme"
   | "calendar"
   | "x"
-  | "check";
+  | "check"
+  | "scissors";
 
 interface TctIconProps {
   name: IconName | string;
@@ -247,6 +248,13 @@ const paths: Record<string, ComponentChildren> = {
       <circle cx="12" cy="12" r="10" />
       <circle cx="12" cy="12" r="6" />
       <circle cx="12" cy="12" r="2" />
+    </>
+  ),
+  scissors: (
+    <>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="6" cy="18" r="2" />
+      <path d="M20 4 8.5 12 20 20" />
     </>
   ),
 };

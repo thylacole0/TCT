@@ -3470,6 +3470,29 @@ button.bento-card:active {
   font-size: 10px;
 }
 
+.fp-budget-detail {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.035em;
+}
+
+.fp-budget-remaining {
+  color: var(--text-display);
+  font-family: var(--font-mono);
+  font-size: var(--body-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fp-budget-over {
+  color: var(--accent);
+  font-size: var(--caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .fp-budget-empty-btn {
   background: transparent;
   border: 1px dashed var(--border-visible);
@@ -3917,6 +3940,86 @@ button.bento-card:active {
   margin: 0;
 }
 
+/* ─── Split modal ─── */
+.fp-split-original {
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fp-split-preview {
+  align-items: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-compact);
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: center;
+  margin: var(--space-md) 0;
+  padding: var(--space-lg) var(--space-md);
+}
+
+.fp-split-side {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.fp-split-label {
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fp-split-amount {
+  color: var(--text-display);
+  font-family: var(--font-display);
+  font-size: var(--display-md);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.fp-split-sep {
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: var(--body);
+  padding: 0 var(--space-xs);
+}
+
+.fp-split-partner {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.fp-split-partner strong {
+  color: var(--text-display);
+  font-weight: 600;
+}
+
+.fp-split-no-partner {
+  margin-top: var(--space-md);
+}
+
+.fp-split-no-partner p {
+  color: var(--accent);
+}
+
+.fp-split-loading {
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: var(--caption);
+  margin-top: var(--space-md);
+}
+
 /* ─── Cycle controls ─── */
 .fp-cycle-badge {
   border: 1px solid var(--border);
@@ -4049,6 +4152,19 @@ input[type="date"].fp-add-input {
 .fp-tx-installment-amount {
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.fp-tx-split-badge {
+  background: var(--surface-highlight);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-compact);
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 @media (max-width: 480px) {

@@ -20,6 +20,9 @@ interface PersonalExpenseRow {
   created_at: string;
   source: string | null;
   card_last4: string | null;
+  original_amount: number | null;
+  is_split: boolean;
+  split_pair_id: string | null;
 }
 
 interface CategoryGroup {
@@ -111,7 +114,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
   const { data, error } = await supabase
     .from("personal_expenses")
-    .select("id, amount, merchant, description, category, expense_date, expense_time, created_at, source, card_last4")
+    .select("id, amount, merchant, description, category, expense_date, expense_time, created_at, source, card_last4, original_amount, is_split, split_pair_id")
     .eq("user_id", user.id)
     .gte("expense_date", resolvedFrom)
     .lte("expense_date", resolvedTo)

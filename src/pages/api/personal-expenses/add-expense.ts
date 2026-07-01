@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { createAuthClient } from "../../../lib/supabase";
 import { CATEGORIES } from "../../../lib/personalExpenses.js";
 import { sendPersonalExpensePushForAuthenticatedUser } from "../../../lib/push";
+import { todayChile } from "../../../lib/dates";
 
 const ALLOWED_CATEGORIES = CATEGORIES as readonly string[];
 const ALLOWED_SOURCES = ["banco_falabella", "google_pay", "telegram", "manual", "unknown"] as const;
@@ -61,7 +62,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     return json({ error: `Categoría inválida: ${category}` }, 400);
   }
 
-  const expenseDate = body.expense_date || new Date().toISOString().slice(0, 10);
+  const expenseDate = body.expense_date || todayChile();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) {
     return json({ error: "expense_date debe ser YYYY-MM-DD" }, 400);
   }
