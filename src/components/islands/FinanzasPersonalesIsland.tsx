@@ -626,6 +626,7 @@ export default function FinanzasPersonalesIsland() {
     if (!splitTarget) return;
     setSplitting(true);
     setSplitError(null);
+    let ok = false;
     try {
       const res = await fetch("/api/personal-expenses/split", {
         method: "POST",
@@ -636,18 +637,21 @@ export default function FinanzasPersonalesIsland() {
       if (!res.ok) {
         setSplitError(
           json.error === "no_partner"
-            ? "No se encontró otro usuario en el sistema para dividir este gasto."
+            ? "No se encontr\u00f3 otro usuario en el sistema para dividir este gasto."
             : json.error || "Error al dividir el gasto"
         );
         return;
       }
       setSplitTarget(null);
       setSplitError(null);
-      await fetchData(currentMonth);
+      ok = true;
     } catch {
-      setSplitError("Error de conexión al dividir el gasto");
+      setSplitError("Error de conexi\u00f3n al dividir el gasto");
     } finally {
       setSplitting(false);
+    }
+    if (ok) {
+      await fetchData(currentMonth);
     }
   };
 

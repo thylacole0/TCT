@@ -6,8 +6,10 @@ import { createAuthClient, createServiceClient } from "../../../lib/supabase";
  *
  * Body: { id: string }
  *
- * Splits a personal expense in half: reduces the owner's amount to 50%
- * and creates a copy (other 50%) on the partner's account via service_role.
+ * Splits a personal expense in half: creates a copy (other 50%) on the partner's
+ * account via service_role first, then reduces the owner's amount to 50%.
+ * Partner copy is created first so if service_role fails the owner's expense
+ * stays untouched.
  *
  * Returns the partner info and new amounts on success,
  * or { error: "no_partner" } if no other household user exists.
@@ -58,7 +60,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const amount = Number(expense.amount);
   if (amount < 20) {
     return new Response(
-      JSON.stringify({ error: "El monto mínimo para dividir es $20" }),
+      JSON.stringify({ error: "El monto minimo para dividir es $20" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -89,7 +91,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     return new Response(
       JSON.stringify({
         error: "no_partner",
-        message: "No se encontró otro usuario en el sistema para dividir este gasto.",
+        message: "No se encontro otro usuario en el sistema para dividir este gasto.",
       }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
@@ -101,26 +103,18 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const half = Math.round(amount / 2);
   const otherHalf = amount - half;
 
-  // 4. Update own expense to half
-  const { error: updateError } = await supabase
-    .from("personal_expenses")
-    .update({
-      amount: half,
-      original_amount: amount,
-      is_split: true,
-    })
-    .eq("id", body.id)
-    .eq("user_id", user.id);
-
-  if (updateError) {
-    return new Response(JSON.stringify({ error: updateError.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+  let serviceClient;
+  try {
+    serviceClient = createServiceClient();
+  } catch (err: any) {
+    return new Response(
+      JSON.stringify({ error: err.message || "Error de configuracion del servidor" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 
-  // 5. Create partner's copy via service_role (bypasses RLS)
-  const serviceClient = createServiceClient();
+  // 4. Create partner's copy via service_role FIRST (bypasses RLS).
+  //    If this fails the owner's expense is never modified.
   const { data: partnerExpense, error: createError } = await serviceClient
     .from("personal_expenses")
     .insert({
@@ -141,18 +135,30 @@ export const POST: APIRoute = async ({ request, locals }) => {
     .single();
 
   if (createError || !partnerExpense) {
-    return new Response(JSON.stringify({ error: createError?.message || "Error al crear el gasto para tu pareja" }), {
+    return new Response(
+      JSON.stringify({ error: createError?.message || "Error al crear el gasto para tu pareja" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // 5. Update owner's expense to half (only after partner copy exists)
+  const { error: updateError } = await supabase
+    .from("personal_expenses")
+    .update({
+      amount: half,
+      original_amount: amount,
+      is_split: true,
+      split_pair_id: partnerExpense.id,
+    })
+    .eq("id", body.id)
+    .eq("user_id", user.id);
+
+  if (updateError) {
+    return new Response(JSON.stringify({ error: updateError.message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  // 6. Link own expense back to partner's copy
-  await supabase
-    .from("personal_expenses")
-    .update({ split_pair_id: partnerExpense.id })
-    .eq("id", body.id)
-    .eq("user_id", user.id);
 
   return new Response(
     JSON.stringify({

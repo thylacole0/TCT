@@ -3967,6 +3967,7 @@ button.bento-card:active {
   flex: 1;
   flex-direction: column;
   gap: var(--space-xs);
+  min-width: 0;
 }
 
 .fp-split-label {
@@ -3980,9 +3981,13 @@ button.bento-card:active {
 .fp-split-amount {
   color: var(--text-display);
   font-family: var(--font-display);
-  font-size: var(--display-md);
+  font-size: var(--heading);
   font-weight: 700;
   line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fp-split-sep {
